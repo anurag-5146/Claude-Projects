@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CIRCUIT</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+
+<!-- ── Scanline overlay (always on top, pure CSS) ────────────────────────── -->
+<div id="scanlines"></div>
+
+<!-- ── Login screen ─────────────────────────────────────────────────────── -->
+<div id="login-screen" class="screen">
+  <div class="login-box">
+    <div class="glitch-wrap">
+      <div class="logo-text" data-text="CIRCUIT">CIRCUIT</div>
+    </div>
+    <div class="logo-sub">PERSONAL AI — BHAI KA BANDA</div>
+    <div class="login-fields">
+      <div class="input-wrap">
+        <span class="input-icon">&#9135;</span>
+        <input id="pw-input" type="password" placeholder="Access Code" autofocus />
+      </div>
+      <button id="login-btn"><span>INITIALISE</span></button>
+    </div>
+    <div id="login-error" class="error-msg"></div>
+    <div class="boot-log" id="boot-log"></div>
+  </div>
+</div>
+
+<!-- ── Mode picker ───────────────────────────────────────────────────────── -->
+<div id="mode-screen" class="screen hidden">
+  <div class="mode-box">
+    <div class="glitch-wrap">
+      <div class="logo-text" data-text="CIRCUIT">CIRCUIT</div>
+    </div>
+    <div class="logo-sub">BHAI, KYA KARNA HAI AAJ?</div>
+    <div class="mode-grid">
+      <button class="mode-btn" data-mode="video">
+        <div class="mode-btn-inner">
+          <span class="mode-icon">&#127916;</span>
+          <span class="mode-label">Create Videos</span>
+          <span class="mode-desc">Pipeline chalao, bhai</span>
+        </div>
+      </button>
+      <button class="mode-btn" data-mode="dev">
+        <div class="mode-btn-inner">
+          <span class="mode-icon">&#128187;</span>
+          <span class="mode-label">Build App / Game</span>
+          <span class="mode-desc">Code likhte hain, bhai</span>
+        </div>
+      </button>
+      <button class="mode-btn" data-mode="general">
+        <div class="mode-btn-inner">
+          <span class="mode-icon">&#128295;</span>
+          <span class="mode-label">Kuch Bhi</span>
+          <span class="mode-desc">Hukum karo, bhai</span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Chat screen ───────────────────────────────────────────────────────── -->
+<div id="chat-screen" class="screen hidden">
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <span class="sidebar-logo-text">CIRCUIT</span>
+      <span class="sidebar-logo-dot">&#11044;</span>
+    </div>
+
+    <div class="sidebar-section-label">QUICK ACTIONS</div>
+    <button class="sidebar-action" id="btn-run-pipeline">
+      <span class="sa-icon">&#9654;</span> Run Pipeline
+    </button>
+    <button class="sidebar-action" id="btn-run-batch">
+      <span class="sa-icon">&#9654;&#9654;</span> Batch Run
+    </button>
+    <button class="sidebar-action" id="btn-new-session">
+      <span class="sa-icon">+</span> New Chat
+    </button>
+
+    <div class="sidebar-section-label" style="margin-top:16px">SETTINGS</div>
+    <button class="sidebar-action" id="btn-change-mode">
+      <span class="sa-icon">&#8635;</span> Change Mode
+    </button>
+    <button class="sidebar-action cpu-btn" id="btn-cpu-toggle" data-level="low">
+      <span class="sa-icon">&#127918;</span> Gaming Mode
+    </button>
+    <button class="sidebar-action" id="btn-git-sync">
+      <span class="sa-icon">&#8645;</span> Sync to Git
+    </button>
+    <div id="git-sync-status"></div>
+
+    <div class="sidebar-section-label" style="margin-top:16px">SESSIONS</div>
+    <div id="session-list"></div>
+
+    <!-- Sidebar footer -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-line">
+        <span id="sf-model">—</span>
+        <span id="sf-status" class="sf-dot idle"></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main chat area -->
+  <main id="chat-main">
+
+    <!-- Top bar -->
+    <div id="topbar">
+      <div class="topbar-left">
+        <span class="topbar-name">CIRCUIT</span>
+        <span id="mode-badge" class="badge badge-mode">general</span>
+        <span id="model-badge" class="badge badge-model">—</span>
+      </div>
+      <div class="topbar-right">
+        <span id="status-dot" class="status-dot idle" title="Idle"></span>
+        <span id="status-label" class="status-label">IDLE</span>
+        <button id="btn-pause" class="topbar-btn" title="Pause / Resume">
+          <span id="pause-icon">&#9646;&#9646;</span>
+        </button>
+        <button id="btn-save" class="topbar-btn" title="Save session">&#128190;</button>
+      </div>
+    </div>
+
+    <!-- HUD bar (always visible, shows live stats) -->
+    <div id="hud-bar">
+      <span class="hud-item" id="hud-model">MODEL: —</span>
+      <span class="hud-sep">|</span>
+      <span class="hud-item" id="hud-tokens">TOKENS: 0</span>
+      <span class="hud-sep">|</span>
+      <span class="hud-item" id="hud-msgs">MSGS: 0</span>
+      <span class="hud-sep">|</span>
+      <span class="hud-item" id="hud-mode">MODE: GENERAL</span>
+      <span class="hud-sep">|</span>
+      <span class="hud-item" id="hud-cpu">CPU: GAMING</span>
+    </div>
+
+    <!-- Routing / countdown bar -->
+    <div id="routing-bar" class="hidden">
+      <div class="routing-left">
+        <span class="routing-label">ROUTING</span>
+        <span class="routing-arrow">&#9658;</span>
+        <strong id="routing-model"></strong>
+        <span class="routing-reason" id="routing-reason"></span>
+      </div>
+      <div id="countdown-wrap">
+        <div id="countdown-ring">
+          <svg viewBox="0 0 36 36">
+            <circle class="ring-bg" cx="18" cy="18" r="15"/>
+            <circle class="ring-fill" id="ring-fill" cx="18" cy="18" r="15"
+              stroke-dasharray="94.2 94.2" stroke-dashoffset="0"/>
+          </svg>
+          <span id="countdown-num">5</span>
+        </div>
+        <div id="override-btns"></div>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="messages">
+      <!-- Welcome message injected by JS -->
+    </div>
+
+    <!-- Pipeline log -->
+    <div id="pipeline-log" class="hidden">
+      <div class="pipeline-header">
+        <span class="ph-icon">&#9654;</span> PIPELINE OUTPUT
+        <button id="btn-close-log">&#10005;</button>
+      </div>
+      <div id="pipeline-lines"></div>
+    </div>
+
+    <!-- Input bar -->
+    <div id="input-bar">
+      <div class="input-wrap-chat">
+        <textarea id="msg-input" placeholder="Bhai, kya hukum hai?" rows="1"></textarea>
+      </div>
+      <button id="send-btn" title="Send (Enter)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
