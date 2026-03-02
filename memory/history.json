@@ -1,0 +1,121 @@
+{
+  "sessions": {
+    "s_1772386997916": {
+      "title": "sahi hai.",
+      "created": "2026-03-01T17:43:17.916975+00:00",
+      "messages": [
+        {
+          "role": "user",
+          "content": "sahi hai."
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "voice pe kaam kare?"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        }
+      ],
+      "mode": "dev"
+    },
+    "s_1772387403122": {
+      "title": "Ek video banaye?",
+      "created": "2026-03-01T17:50:03.122132+00:00",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Ek video banaye?"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        }
+      ],
+      "mode": "video"
+    },
+    "s_1772387513598": {
+      "title": "Ho?",
+      "created": "2026-03-01T17:51:53.598079+00:00",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Ho?"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        }
+      ],
+      "mode": "general"
+    },
+    "s_1772391960437": {
+      "title": "youtube ke liye video banaye?",
+      "created": "2026-03-01T19:06:00.437822+00:00",
+      "messages": [
+        {
+          "role": "user",
+          "content": "youtube ke liye video banaye?"
+        },
+        {
+          "role": "assistant",
+          "content": "Solid plan bhai! \nMain hun na bhai — tension not!\nFor YouTube video creation, we have the `agents/video_agent.py` script that utilizes FFmpeg for rendering. Here's a more detailed overview:\n\n### YouTube Video Creation\nWe'll use the `main.py` orchestrator to fetch a Reddit post, score it with Groq, and then generate a script using Claude or Gemini. The script will be voiced using edge-tts Ryan 1.15x, and subtitles will be added using faster-whisper.\n\nHere's the pipeline flow for YouTube:\n```python\n# main.py\nimport os\nfrom agents.reddit_agent import fetch_reddit_post\nfrom agents.script_agent import generate_script\nfrom agents.voice_agent import voice_script\nfrom agents.subtitle_agent import add_subtitles\nfrom agents.video_agent import render_video\n\n# Fetch Reddit post\npost = fetch_reddit_post()\n\n# Generate script\nscript = generate_script(post)\n\n# Voice script\naudio = voice_script(script)\n\n# Add subtitles\nsubtitles = add_subtitles(audio)\n\n# Render video\nrender_video(script, audio, subtitles)\n```\n\n### Video Settings\nFor YouTube, we'll use the following video settings:\n```python\n# config.py\nVIDEO_SETTINGS = {\n    'resolution': '1920x1080',\n    'fps': 30,\n    'background': 'assets/backgrounds/minecraft_bg.mp4',\n    'music': 'assets/music/music.mp3'\n}\n```\n\n### Output\nThe final video will be saved in the `output` directory with the filename `<slug>_youtube.mp4`.\n```python\n# video_agent.py\nimport os\nimport ffmpeg\n\ndef render_video(script, audio, subtitles):\n    # ...\n    output_filename = f\"output/{slug}_youtube.mp4\"\n    # ...\n    ffmpeg.output(\n        # ...\n        f\"file://{output_filename}\"\n    ).run()\n```\n\nGuarantee se ho jaayega, bhai! The video will be ready for upload to YouTube. Bhai ka Circuit hamesha taiyyar!"
+        }
+      ],
+      "mode": "video"
+    },
+    "s_1772435998797": {
+      "title": "Let's make another video from our reddit pipeline and this t",
+      "created": "2026-03-02T07:19:58.797498+00:00",
+      "messages": [],
+      "mode": "video"
+    },
+    "s_1772441951061": {
+      "title": "claude working?",
+      "created": "2026-03-02T08:59:11.061984+00:00",
+      "messages": [],
+      "mode": "video"
+    },
+    "s_1772441999667": {
+      "title": "Why cant I access the older chats under sessions",
+      "created": "2026-03-02T08:59:59.667527+00:00",
+      "messages": [],
+      "mode": "video"
+    },
+    "s_1772468950777": {
+      "title": "claude is connected?",
+      "created": "2026-03-02T16:29:10.777252+00:00",
+      "messages": [
+        {
+          "role": "user",
+          "content": "claude is connected?"
+        },
+        {
+          "role": "assistant",
+          "content": "To verify Claude API connection, check the following:\n```python\nimport os\nimport requests\n\n# Claude API endpoint and credentials\nclaude_endpoint = 'https://api.claude.ai/v1/generate'\nclaude_api_key = os.environ.get('CLAUDE_API_KEY')\nclaude_model = 'claude-sonnet-4-6'\n\n# Test API connection\nresponse = requests.post(\n    claude_endpoint,\n    headers={'Authorization': f'Bearer {claude_api_key}'},\n    json={'model': claude_model, 'prompt': 'Test connection'}\n)\n\n# Check response status code\nif response.status_code == 200:\n    print('Claude API connection established')\nelse:\n    print('Claude API connection failed')\n    print(f'Status code: {response.status_code}')\n    print(f'Response: {response.text}')\n```"
+        }
+      ],
+      "mode": "video"
+    }
+  }
+}
