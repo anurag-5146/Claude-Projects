@@ -1,7 +1,9 @@
 # Controller input
-pygame>=2.5.2
+# 2.6.x adds Python 3.13 wheels; 2.5.x had source-only for 3.13
+pygame>=2.6.0
 
 # Virtual gamepad output (requires ViGEmBus driver on Windows)
+# https://github.com/nefarius/ViGEmBus/releases
 vgamepad>=0.1.0
 
 # Mouse and keyboard simulation
