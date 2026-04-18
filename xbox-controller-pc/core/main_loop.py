@@ -10,7 +10,7 @@ calling run(), so the loop itself never imports from modes/ or output/.
 """
 import logging
 import time
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import pygame
 
@@ -21,6 +21,7 @@ from core.mode_manager import ModeManager
 logger = logging.getLogger(__name__)
 
 Handler = Callable[[ControllerState], None]
+SwitchListener = Callable[[str], None]
 
 
 class MainLoop:
@@ -31,12 +32,13 @@ class MainLoop:
 
         self._game_handler: Optional[Handler] = None
         self._desktop_handler: Optional[Handler] = None
+        self._switch_listeners: List[SwitchListener] = []
 
         self._last_reconnect_attempt: float = 0.0
         self._tick_duration: float = 1.0 / TICK_RATE
 
     # ------------------------------------------------------------------
-    # Handler registration
+    # Handler / listener registration
     # ------------------------------------------------------------------
 
     def set_game_handler(self, handler: Handler) -> None:
@@ -44,6 +46,14 @@ class MainLoop:
 
     def set_desktop_handler(self, handler: Handler) -> None:
         self._desktop_handler = handler
+
+    def add_switch_listener(self, listener: SwitchListener) -> None:
+        """Register a callback invoked (new_mode: str) on every mode switch."""
+        self._switch_listeners.append(listener)
+
+    @property
+    def mode_manager(self) -> ModeManager:
+        return self._mode_manager
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -120,8 +130,12 @@ class MainLoop:
     # ------------------------------------------------------------------
 
     def _on_mode_switch(self, new_mode: str) -> None:
-        # Placeholder: future OSD / tray notifications go here.
         logger.info("Active mode: %s", new_mode.upper())
+        for listener in self._switch_listeners:
+            try:
+                listener(new_mode)
+            except Exception:
+                logger.exception("Switch listener raised")
 
     def _sleep_remainder(self, tick_start: float) -> None:
         elapsed = time.monotonic() - tick_start

@@ -2,7 +2,7 @@
 Central configuration for xbox-controller-pc.
 All tunable constants live here so no magic numbers are scattered through the code.
 """
-from typing import Tuple
+from typing import Dict, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ AXIS_LX = 0   # Left  stick X   (−1 = left,   +1 = right)
 AXIS_LY = 1   # Left  stick Y   (−1 = up,     +1 = down)
 AXIS_RX = 2   # Right stick X
 AXIS_RY = 3   # Right stick Y
-AXIS_LT = 4   # Left  trigger   (−1 = released, +1 = fully pressed)
+AXIS_LT = 4   # Left  trigger   (−1 = released, +1 = fully pressed in SDL2)
 AXIS_RT = 5   # Right trigger
 
 # D-pad hat index
@@ -50,11 +50,58 @@ DEADZONE: float = 0.15          # Stick dead-zone (fraction of full range)
 TRIGGER_DEADZONE: float = 0.05  # Trigger dead-zone
 
 # ---------------------------------------------------------------------------
-# Desktop-mode mouse/keyboard settings
+# Desktop-mode mouse / scroll settings
 # ---------------------------------------------------------------------------
 MOUSE_SENSITIVITY: float = 18.0     # px per tick at full stick deflection
-MOUSE_ACCEL_EXPONENT: float = 1.6   # >1 means slow small movements, fast large
-SCROLL_SENSITIVITY: int = 3         # scroll lines per tick at full stick deflection
+MOUSE_ACCEL_EXPONENT: float = 1.6   # >1 = slow small, fast large movements
+# Scroll events per second at full left-stick deflection (non-linear via exponent)
+SCROLL_SENSITIVITY: float = 12.0
+# Fraction of trigger travel required to fire a trigger action
+TRIGGER_THRESHOLD: float = 0.5
+
+# ---------------------------------------------------------------------------
+# Desktop-mode default button → action mapping
+# Actions used here must be handled in DesktopMode._do_action().
+# These are the baseline defaults; profile JSONs may override per-button.
+# ---------------------------------------------------------------------------
+BUTTON_ACTIONS: Dict[int, str] = {
+    BUTTON_A:      "left_click",
+    BUTTON_B:      "right_click",
+    BUTTON_X:      "enter",
+    BUTTON_Y:      "escape",
+    BUTTON_START:  "play_pause",
+    BUTTON_LSTICK: "middle_click",
+}
+
+# LB (held) + button → Windows shortcut action
+LB_SHORTCUTS: Dict[int, str] = {
+    BUTTON_A:     "alt_tab",
+    BUTTON_B:     "alt_f4",
+    BUTTON_X:     "win_d",
+    BUTTON_Y:     "print_screen",
+    BUTTON_START: "win_tab",
+    BUTTON_BACK:  "win_tab",
+}
+
+# D-pad directions → action  (hat values from pygame)
+DPAD_ACTIONS: Dict[Tuple[int, int], str] = {
+    (0,  1): "volume_up",
+    (0, -1): "volume_down",
+    (-1, 0): "prev_track",
+    (1,  0): "next_track",
+}
+
+# Trigger actions when pulled past TRIGGER_THRESHOLD
+LT_ACTION: str = "browser_back"
+RT_ACTION: str = "browser_forward"
+
+# ---------------------------------------------------------------------------
+# Rumble feedback on mode switch (physical controller via XInput)
+# ---------------------------------------------------------------------------
+RUMBLE_ON_SWITCH: bool = True
+RUMBLE_LEFT_MOTOR: float = 0.5    # 0.0 – 1.0
+RUMBLE_RIGHT_MOTOR: float = 0.3
+RUMBLE_DURATION: float = 0.12     # seconds
 
 # ---------------------------------------------------------------------------
 # Loop timing
