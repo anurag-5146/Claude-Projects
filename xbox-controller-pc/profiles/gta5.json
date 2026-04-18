@@ -1,0 +1,7 @@
+{
+  "name": "gta5",
+  "match_patterns": ["Grand Theft Auto V", "GTA5", "GTA 5"],
+  "_note": "Game mode is used for GTA5 — this profile is loaded for identification only. Desktop-mode settings below apply if you briefly switch to desktop while GTA5 is in the foreground.",
+  "mouse_sensitivity": 18.0,
+  "scroll_sensitivity": 12.0
+}

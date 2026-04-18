@@ -1,0 +1,32 @@
+{
+  "name": "default",
+  "match_patterns": [],
+  "mouse_sensitivity": 18.0,
+  "mouse_accel_exponent": 1.6,
+  "scroll_sensitivity": 12.0,
+  "trigger_threshold": 0.5,
+  "button_actions": {
+    "A":      "left_click",
+    "B":      "right_click",
+    "X":      "enter",
+    "Y":      "escape",
+    "START":  "play_pause",
+    "LSTICK": "middle_click"
+  },
+  "lb_shortcuts": {
+    "A":     "alt_tab",
+    "B":     "alt_f4",
+    "X":     "win_d",
+    "Y":     "print_screen",
+    "START": "win_tab",
+    "BACK":  "win_tab"
+  },
+  "dpad_actions": {
+    "up":    "volume_up",
+    "down":  "volume_down",
+    "left":  "prev_track",
+    "right": "next_track"
+  },
+  "lt_action": "browser_back",
+  "rt_action": "browser_forward"
+}

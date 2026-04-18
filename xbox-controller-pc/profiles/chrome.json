@@ -1,0 +1,10 @@
+{
+  "name": "chrome",
+  "match_patterns": ["Google Chrome", "- Chrome"],
+  "mouse_sensitivity": 22.0,
+  "mouse_accel_exponent": 1.5,
+  "scroll_sensitivity": 15.0,
+  "trigger_threshold": 0.3,
+  "lt_action": "browser_back",
+  "rt_action": "browser_forward"
+}
