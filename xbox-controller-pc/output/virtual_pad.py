@@ -95,11 +95,26 @@ class VirtualPad:
         self._rumble_timer: Optional[threading.Timer] = None
 
         if _VG_AVAILABLE:
-            try:
-                self._pad = vg.VX360Gamepad()
-                logger.info("Virtual Xbox 360 pad created.")
-            except Exception as exc:
-                logger.error("Could not create virtual pad: %s", exc)
+            # Delay ViGEmBus device creation so pygame's joystick subsystem
+            # initialises first and the reader locks onto the physical controller.
+            # Without this, SDL2 sees both devices simultaneously and may
+            # connect to the virtual pad instead of the physical one.
+            t = threading.Timer(2.0, self._create_pad)
+            t.daemon = True
+            t.start()
+        else:
+            logger.warning("vgamepad not installed — game-mode output disabled.")
+
+    # ------------------------------------------------------------------
+    # Deferred ViGEmBus creation
+    # ------------------------------------------------------------------
+
+    def _create_pad(self) -> None:
+        try:
+            self._pad = vg.VX360Gamepad()
+            logger.info("Virtual Xbox 360 pad created (deferred).")
+        except Exception as exc:
+            logger.error("Could not create virtual pad: %s", exc)
 
     # ------------------------------------------------------------------
     # Passthrough
