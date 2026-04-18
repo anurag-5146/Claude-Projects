@@ -17,15 +17,45 @@ Profile JSON fields (all optional — missing fields fall back to settings.py de
 """
 import json
 import logging
-import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
 _PROFILES_DIR = Path(__file__).parent
 _WINDOW_POLL_INTERVAL = 1.0   # seconds between foreground-window checks
+
+# ---------------------------------------------------------------------------
+# Key normalisers — JSON uses human-readable names; internals use int/tuple
+# ---------------------------------------------------------------------------
+_BTN_NAME_TO_IDX: Dict[str, int] = {
+    "A": 0, "B": 1, "X": 2, "Y": 3,
+    "LB": 4, "RB": 5, "BACK": 6, "START": 7,
+    "LSTICK": 8, "RSTICK": 9, "GUIDE": 10,
+}
+
+_DPAD_NAME_TO_HAT: Dict[str, Tuple[int, int]] = {
+    "up": (0, 1), "down": (0, -1),
+    "left": (-1, 0), "right": (1, 0),
+}
+
+
+def _normalize(data: dict) -> dict:
+    """Convert friendly JSON keys to the int/tuple keys DesktopMode expects."""
+    data = dict(data)
+    for field in ("button_actions", "lb_shortcuts"):
+        if field in data:
+            data[field] = {
+                _BTN_NAME_TO_IDX.get(str(k).upper(), k): v
+                for k, v in data[field].items()
+            }
+    if "dpad_actions" in data:
+        data["dpad_actions"] = {
+            _DPAD_NAME_TO_HAT.get(str(k).lower(), k): v
+            for k, v in data["dpad_actions"].items()
+        }
+    return data
 
 # ---------------------------------------------------------------------------
 # Foreground window title (Windows only)
@@ -77,7 +107,7 @@ class ProfileManager:
 
         for path in sorted(_PROFILES_DIR.glob("*.json")):
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = _normalize(json.loads(path.read_text(encoding="utf-8")))
                 if data.get("name") == "default":
                     self._default = data
                 else:
