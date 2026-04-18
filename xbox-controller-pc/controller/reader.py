@@ -17,6 +17,11 @@ from config.settings import DEADZONE, TRIGGER_DEADZONE, AXIS_LT, AXIS_RT
 
 logger = logging.getLogger(__name__)
 
+# ViGEmBus emits an Xbox 360 virtual pad with a fixed GUID prefix.
+# Skip it so we lock onto the physical controller instead.
+_VIGEMBUS_GUID_PREFIX = "030000005e0400008e02"
+_VIGEMBUS_GUID_PREFIX_ALT = "030003f05e0400008e02"
+
 
 @dataclass
 class ControllerState:
@@ -127,19 +132,36 @@ class ControllerReader:
         count = pygame.joystick.get_count()
         if count == 0:
             return False
+        idx = self._pick_physical_joystick(count)
         try:
-            joy = pygame.joystick.Joystick(0)
+            joy = pygame.joystick.Joystick(idx)
             joy.init()
             self._joystick = joy
             self._instance_id = joy.get_instance_id()
             self.state.connected = True
-            logger.info("Connected: [0] %s  guid=%s  instance=%d  axes=%d  buttons=%d  hats=%d",
-                        joy.get_name(), joy.get_guid(), self._instance_id,
+            logger.info("Connected: [%d] %s  guid=%s  instance=%d  axes=%d  buttons=%d  hats=%d",
+                        idx, joy.get_name(), joy.get_guid(), self._instance_id,
                         joy.get_numaxes(), joy.get_numbuttons(), joy.get_numhats())
             return True
         except pygame.error as exc:
             logger.error("Failed to connect: %s", exc)
             return False
+
+    @staticmethod
+    def _pick_physical_joystick(count: int) -> int:
+        """Return index of the first non-ViGEmBus joystick, else 0."""
+        for i in range(count):
+            try:
+                j = pygame.joystick.Joystick(i)
+                j.init()
+                guid = j.get_guid()
+                j.quit()
+            except pygame.error:
+                continue
+            if not (guid.startswith(_VIGEMBUS_GUID_PREFIX)
+                    or guid.startswith(_VIGEMBUS_GUID_PREFIX_ALT)):
+                return i
+        return 0
 
     def _read_joystick(self) -> None:
         j = self._joystick
