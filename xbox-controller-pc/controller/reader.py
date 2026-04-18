@@ -96,8 +96,9 @@ class ControllerReader:
                 self.state.connected = False
                 self._clear_state()
             elif event.type == pygame.JOYDEVICEADDED:
-                logger.info("Controller device added — reconnecting.")
-                self._try_connect()
+                if not self.state.connected:
+                    logger.info("Controller device added — reconnecting.")
+                    self._try_connect()
 
     def _try_connect(self) -> bool:
         count = pygame.joystick.get_count()
