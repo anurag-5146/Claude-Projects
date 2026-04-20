@@ -16,12 +16,15 @@ data class UiState(
     val capabilities: CameraCapabilities = CameraCapabilities(),
     val captureMode: CaptureMode = CaptureMode.PHOTO,
     val processingState: ProcessingState = ProcessingState.Idle,
+    val detectedScene: Scene = Scene.GENERAL,
+    val sceneConfidence: Float = 0f,
+    val portraitBlurRadius: Float = 20f,
     val showHistogram: Boolean = true,
     val showFocusPeaking: Boolean = false,
     val showZebraStripes: Boolean = false
 )
 
-enum class CaptureMode { PHOTO, HDR, NIGHT, VIDEO }
+enum class CaptureMode { PHOTO, HDR, NIGHT, PORTRAIT, VIDEO }
 
 sealed class ProcessingState {
     object Idle : ProcessingState()
@@ -35,6 +38,8 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
     val controller = Camera2Controller(app, viewModelScope)
     private val processor = ImageProcessor(app)
+    private val portraitProcessor = PortraitProcessor(app).also { it.init() }
+    private val superResProcessor = SuperResProcessor(app).also { it.init() }
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -67,16 +72,56 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     fun capture() {
         if (_ui.value.processingState !is ProcessingState.Idle) return
         when (_ui.value.captureMode) {
-            CaptureMode.PHOTO -> capturePhoto()
-            CaptureMode.HDR   -> captureHdr()
-            CaptureMode.NIGHT -> captureNight()
-            CaptureMode.VIDEO -> { /* Phase 4 */ }
+            CaptureMode.PHOTO    -> capturePhoto()
+            CaptureMode.HDR      -> captureHdr()
+            CaptureMode.NIGHT    -> captureNight()
+            CaptureMode.PORTRAIT -> capturePortrait()
+            CaptureMode.VIDEO    -> Unit // Phase 4
         }
     }
 
     private fun capturePhoto() {
         _ui.update { it.copy(processingState = ProcessingState.Capturing(1, 1, "Capturing…")) }
         controller.capturePhoto()
+    }
+
+    private fun capturePortrait() = viewModelScope.launch {
+        _ui.update { it.copy(processingState = ProcessingState.Capturing(1, 1, "Capturing…")) }
+
+        // Collect one JPEG via the existing burst infrastructure (1 frame)
+        val burst = controller.burstCapture { captureHdrBurst(listOf(0f)) }
+        val jpegBytes = burst.firstOrNull()
+        if (jpegBytes == null) {
+            _ui.update { it.copy(processingState = ProcessingState.Error("Portrait capture failed")) }
+            return@launch
+        }
+
+        _ui.update { it.copy(processingState = ProcessingState.Processing(0.1f, "Detecting subject…")) }
+        val t0 = System.currentTimeMillis()
+
+        val bitmap = jpegBytes.decodeJpegToBitmap()
+        if (bitmap == null) {
+            _ui.update { it.copy(processingState = ProcessingState.Error("Decode failed")) }
+            return@launch
+        }
+
+        // Classify scene first to get colour science params
+        val (scene, _) = SceneClassifier.classify(bitmap)
+        val sceneParams = SceneClassifier.paramsFor(scene)
+
+        // Portrait bokeh
+        _ui.update { it.copy(processingState = ProcessingState.Processing(0.2f, "Rendering bokeh…")) }
+        val blurRadius = _ui.value.portraitBlurRadius
+        val bokehBitmap = portraitProcessor.process(bitmap, blurRadius) { p ->
+            _ui.update { it.copy(processingState = ProcessingState.Processing(0.2f + p * 0.5f, "Rendering bokeh…")) }
+        }
+
+        // Color science pass
+        _ui.update { it.copy(processingState = ProcessingState.Processing(0.75f, "Color science…")) }
+        val finalBitmap = ColorScience.process(bokehBitmap, sceneParams)
+
+        val uri = processor.saveBitmap(finalBitmap, "NITRO_PORTRAIT")
+        _ui.update { it.copy(processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
     }
 
     private fun captureHdr() = viewModelScope.launch {
@@ -89,29 +134,20 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
             }
         ) { it.captureHdrBurst(evStops) }
 
-        if (burst.isEmpty()) {
-            _ui.update { it.copy(processingState = ProcessingState.Error("HDR capture failed")) }
-            return@launch
-        }
+        if (burst.isEmpty()) { _ui.update { it.copy(processingState = ProcessingState.Error("HDR capture failed")) }; return@launch }
 
-        _ui.update { it.copy(processingState = ProcessingState.Processing(0f, "Aligning frames…")) }
         val t0 = System.currentTimeMillis()
+        val bitmap = HdrProcessor.process(burst) { p ->
+            _ui.update { it.copy(processingState = ProcessingState.Processing(p, when {
+                p < 0.3f -> "Aligning frames…"; p < 0.6f -> "Merging exposures…"; else -> "Tonemapping…"
+            })) }
+        } ?: run { _ui.update { it.copy(processingState = ProcessingState.Error("HDR merge failed")) }; return@launch }
 
-        val bitmap = HdrProcessor.process(burst) { progress ->
-            val stage = when {
-                progress < 0.3f -> "Aligning frames…"
-                progress < 0.6f -> "Merging exposures…"
-                else -> "Tonemapping…"
-            }
-            _ui.update { it.copy(processingState = ProcessingState.Processing(progress, stage)) }
-        }
+        // Apply color science
+        val (scene, _) = SceneClassifier.classify(bitmap)
+        val finalBitmap = ColorScience.process(bitmap, SceneClassifier.paramsFor(scene))
 
-        if (bitmap == null) {
-            _ui.update { it.copy(processingState = ProcessingState.Error("HDR merge failed")) }
-            return@launch
-        }
-
-        val uri = processor.saveBitmap(bitmap, "NITRO_HDR")
+        val uri = processor.saveBitmap(finalBitmap, "NITRO_HDR")
         _ui.update { it.copy(processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
     }
 
@@ -125,36 +161,37 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
             }
         ) { it.captureNightBurst(frameCount) }
 
-        if (burst.isEmpty()) {
-            _ui.update { it.copy(processingState = ProcessingState.Error("Night capture failed")) }
-            return@launch
-        }
+        if (burst.isEmpty()) { _ui.update { it.copy(processingState = ProcessingState.Error("Night capture failed")) }; return@launch }
 
-        _ui.update { it.copy(processingState = ProcessingState.Processing(0f, "Aligning frames…")) }
         val t0 = System.currentTimeMillis()
+        val bitmap = NightModeProcessor.process(burst) { p ->
+            _ui.update { it.copy(processingState = ProcessingState.Processing(p, when {
+                p < 0.4f -> "Aligning frames…"; p < 0.7f -> "Stacking frames…"; else -> "Sharpening…"
+            })) }
+        } ?: run { _ui.update { it.copy(processingState = ProcessingState.Error("Night merge failed")) }; return@launch }
 
-        val bitmap = NightModeProcessor.process(burst) { progress ->
-            val stage = when {
-                progress < 0.4f -> "Aligning frames…"
-                progress < 0.7f -> "Stacking frames…"
-                else -> "Sharpening…"
-            }
-            _ui.update { it.copy(processingState = ProcessingState.Processing(progress, stage)) }
-        }
+        val nightParams = SceneClassifier.paramsFor(Scene.NIGHT)
+        val finalBitmap = ColorScience.process(bitmap, nightParams)
 
-        if (bitmap == null) {
-            _ui.update { it.copy(processingState = ProcessingState.Error("Night merge failed")) }
-            return@launch
-        }
-
-        val uri = processor.saveBitmap(bitmap, "NITRO_NIGHT")
+        val uri = processor.saveBitmap(finalBitmap, "NITRO_NIGHT")
         _ui.update { it.copy(processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
     }
 
+    // ── Scene detection ───────────────────────────────────────────────────────
+
+    fun analyzeScene(bitmap: android.graphics.Bitmap) = viewModelScope.launch {
+        val (scene, confidence) = SceneClassifier.classify(bitmap)
+        _ui.update { it.copy(detectedScene = scene, sceneConfidence = confidence) }
+        // Auto-switch to portrait mode if scene confidently detected
+        if (scene == Scene.PORTRAIT && confidence > 0.7f && _ui.value.captureMode == CaptureMode.PHOTO) {
+            _ui.update { it.copy(captureMode = CaptureMode.PORTRAIT) }
+        }
+    }
+
+    // ── Controls ──────────────────────────────────────────────────────────────
+
     fun dismissResult() = _ui.update { it.copy(processingState = ProcessingState.Idle) }
-
-    // ── Parameter control ─────────────────────────────────────────────────────
-
+    fun setPortraitBlur(r: Float) = _ui.update { it.copy(portraitBlurRadius = r) }
     fun setAutoMode(auto: Boolean) {
         controller.updateParams { copy(isAutoExposure = auto, isAutoFocus = auto, isAutoWhiteBalance = auto) }
         _ui.update { it.copy(params = it.params.copy(isAutoExposure = auto, isAutoFocus = auto, isAutoWhiteBalance = auto)) }
@@ -164,14 +201,19 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     fun setFocusDistance(d: Float) { controller.updateParams { copy(focusDistance = d, isAutoFocus = false) }; _ui.update { it.copy(params = it.params.copy(focusDistance = d, isAutoFocus = false)) } }
     fun setWhiteBalance(mode: Int) { controller.updateParams { copy(awbMode = mode) }; _ui.update { it.copy(params = it.params.copy(awbMode = mode)) } }
     fun setZoom(ratio: Float) {
-        val clamped = ratio.coerceIn(1f, _ui.value.capabilities.maxZoom)
-        controller.updateParams { copy(zoomRatio = clamped) }
-        _ui.update { it.copy(params = it.params.copy(zoomRatio = clamped)) }
+        val c = ratio.coerceIn(1f, _ui.value.capabilities.maxZoom)
+        controller.updateParams { copy(zoomRatio = c) }
+        _ui.update { it.copy(params = it.params.copy(zoomRatio = c)) }
     }
     fun setCaptureMode(mode: CaptureMode) = _ui.update { it.copy(captureMode = mode) }
     fun toggleHistogram() = _ui.update { it.copy(showHistogram = !it.showHistogram) }
     fun toggleFocusPeaking() = _ui.update { it.copy(showFocusPeaking = !it.showFocusPeaking) }
     fun toggleZebraStripes() = _ui.update { it.copy(showZebraStripes = !it.showZebraStripes) }
 
-    override fun onCleared() { controller.close(); super.onCleared() }
+    override fun onCleared() {
+        controller.close()
+        portraitProcessor.close()
+        superResProcessor.close()
+        super.onCleared()
+    }
 }

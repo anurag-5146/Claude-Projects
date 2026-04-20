@@ -53,7 +53,13 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/LICENSE.md"
+            excludes += "META-INF/LICENSE-notice.md"
         }
+    }
+
+    aaptOptions {
+        noCompress += listOf("tflite", "lite")
     }
 }
 
@@ -65,6 +71,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.exifinterface)
     implementation(libs.opencv)
+    implementation(libs.tflite)
+    implementation(libs.tflite.support)
+    implementation(libs.tflite.gpu)
+    implementation(libs.mediapipe.tasks.vision)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

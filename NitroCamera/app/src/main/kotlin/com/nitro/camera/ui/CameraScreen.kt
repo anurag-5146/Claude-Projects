@@ -77,6 +77,15 @@ fun CameraScreen(viewModel: CameraViewModel) {
             }
         }
 
+        // ── Scene badge ──────────────────────────────────────────────────────
+        SceneBadge(
+            scene = ui.detectedScene,
+            confidence = ui.sceneConfidence,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 16.dp)
+        )
+
         // ── Processing overlay ───────────────────────────────────────────────
         if (ui.processingState !is ProcessingState.Idle) {
             ProcessingOverlay(
@@ -85,6 +94,19 @@ fun CameraScreen(viewModel: CameraViewModel) {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 72.dp)
+            )
+        }
+
+        // ── Portrait blur slider (only in PORTRAIT mode) ─────────────────────
+        AnimatedVisibility(
+            visible = ui.captureMode == CaptureMode.PORTRAIT,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 180.dp),
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut()
+        ) {
+            PortraitBlurSlider(
+                blurRadius = ui.portraitBlurRadius,
+                onBlurChange = { viewModel.setPortraitBlur(it) }
             )
         }
 
