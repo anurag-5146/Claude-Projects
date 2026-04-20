@@ -11,6 +11,7 @@
     <uses-feature android:name="android.hardware.camera.raw" android:required="false" />
 
     <application
+        android:name=".NitroCameraApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"

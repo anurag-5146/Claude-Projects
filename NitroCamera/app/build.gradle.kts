@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.opencv)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

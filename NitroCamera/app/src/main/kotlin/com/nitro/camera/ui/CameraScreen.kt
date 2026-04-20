@@ -22,6 +22,7 @@ import com.nitro.camera.camera.CameraState
 import com.nitro.camera.ui.components.*
 import com.nitro.camera.viewmodel.CameraViewModel
 import com.nitro.camera.viewmodel.CaptureMode
+import com.nitro.camera.viewmodel.ProcessingState
 
 @Composable
 fun CameraScreen(viewModel: CameraViewModel) {
@@ -76,17 +77,14 @@ fun CameraScreen(viewModel: CameraViewModel) {
             }
         }
 
-        // ── Capture message ──────────────────────────────────────────────────
-        ui.captureMessage?.let { msg ->
-            Text(
-                text = msg,
-                color = Color.White,
-                fontSize = 13.sp,
+        // ── Processing overlay ───────────────────────────────────────────────
+        if (ui.processingState !is ProcessingState.Idle) {
+            ProcessingOverlay(
+                state = ui.processingState,
+                onDismiss = { viewModel.dismissResult() },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 80.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .padding(top = 72.dp)
             )
         }
 
@@ -119,7 +117,7 @@ fun CameraScreen(viewModel: CameraViewModel) {
                 .padding(bottom = 36.dp)
         ) {
             CaptureButton(
-                isCapturing = ui.isCapturing,
+                isCapturing = ui.processingState !is ProcessingState.Idle,
                 onClick = { viewModel.capture() }
             )
         }

@@ -79,6 +79,15 @@ class ImageProcessor(private val context: Context) {
         FloatArray(256) { histogram[it] / max }
     }
 
+    suspend fun saveBitmap(bitmap: android.graphics.Bitmap, prefix: String): String =
+        withContext(Dispatchers.IO) {
+            val baos = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 97, baos)
+            val bytes = baos.toByteArray()
+            val filename = "${prefix}_${timestamp()}.jpg"
+            saveToMediaStore(bytes, filename, "image/jpeg", Environment.DIRECTORY_DCIM + "/NitroCamera")
+        }
+
     private fun saveToMediaStore(bytes: ByteArray, filename: String, mimeType: String, relativePath: String): String {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, filename)

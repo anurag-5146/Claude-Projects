@@ -300,6 +300,29 @@ class Camera2Controller(
         }
 }
 
+    // ── Burst capture gateway ─────────────────────────────────────────────────
+
+    /**
+     * Opens a BurstCaptureController on the live session/device and runs [block].
+     * [onFrameCaptured] is called (0-indexed) after each frame arrives so the
+     * UI can update a progress counter.
+     */
+    suspend fun burstCapture(
+        onFrameCaptured: (Int) -> Unit = {},
+        block: suspend BurstCaptureController.(onFrameCaptured: (Int) -> Unit) -> List<ByteArray>
+    ): List<ByteArray> {
+        val dev = cameraDevice ?: return emptyList()
+        val sess = captureSession ?: return emptyList()
+        val burstCtrl = BurstCaptureController(
+            device = dev,
+            session = sess,
+            handler = cameraHandler,
+            baseParams = CaptureParameters()
+        )
+        return burstCtrl.block(onFrameCaptured)
+    }
+}
+
 sealed class CaptureOutcome {
     data class Success(val result: TotalCaptureResult, val latencyMs: Long) : CaptureOutcome()
     data class Failure(val reason: String) : CaptureOutcome()
