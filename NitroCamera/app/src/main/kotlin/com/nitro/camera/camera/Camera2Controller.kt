@@ -58,6 +58,7 @@ class Camera2Controller(
 
     private var params = CaptureParameters()
     private var captureStartTimeMs = 0L
+    val previewAnalyzer = PreviewAnalyzer(scope, cameraHandler)
 
     // ── Open / Close ──────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ class Camera2Controller(
         jpegReader = null
         rawReader?.close()
         rawReader = null
+        previewAnalyzer.close()
         zslBuffer.clear()
         _cameraState.value = CameraState.Closed
     }
@@ -108,8 +110,26 @@ class Camera2Controller(
             add(OutputConfiguration(surface))
             add(OutputConfiguration(jpegReader!!.surface))
             rawReader?.let { add(OutputConfiguration(it.surface)) }
+            add(OutputConfiguration(previewAnalyzer.imageReader.surface))
         }
 
+        captureSession = createCaptureSession(device, outputs)
+        sendRepeatingPreview()
+    }
+
+    /** Re-opens the capture session with additional surfaces (e.g. MediaRecorder for video). */
+    suspend fun startPreviewWithExtras(extraSurfaces: List<Surface>) {
+        val device = cameraDevice ?: return
+        val surface = previewSurface ?: return
+        captureSession?.close()
+
+        val outputs = buildList {
+            add(OutputConfiguration(surface))
+            jpegReader?.let { add(OutputConfiguration(it.surface)) }
+            rawReader?.let { add(OutputConfiguration(it.surface)) }
+            add(OutputConfiguration(previewAnalyzer.imageReader.surface))
+            extraSurfaces.forEach { add(OutputConfiguration(it)) }
+        }
         captureSession = createCaptureSession(device, outputs)
         sendRepeatingPreview()
     }
@@ -117,6 +137,8 @@ class Camera2Controller(
     private fun sendRepeatingPreview() {
         val session = captureSession ?: return
         val surface = previewSurface ?: return
+        // Also feed the analysis surface so PreviewAnalyzer gets frames
+        val analysisSurface = previewAnalyzer.imageReader.surface
 
         val request = buildPreviewRequest(surface)
         session.setRepeatingRequest(request, previewCaptureCallback, cameraHandler)
@@ -161,6 +183,7 @@ class Camera2Controller(
     private fun buildPreviewRequest(surface: Surface): CaptureRequest {
         return (cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)).apply {
             addTarget(surface)
+            addTarget(previewAnalyzer.imageReader.surface)
             applyParams(this)
         }.build()
     }

@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nitro.camera.camera.*
 import com.nitro.camera.processing.*
+import com.nitro.camera.processing.LogProfile
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -21,7 +22,14 @@ data class UiState(
     val portraitBlurRadius: Float = 20f,
     val showHistogram: Boolean = true,
     val showFocusPeaking: Boolean = false,
-    val showZebraStripes: Boolean = false
+    val showZebraStripes: Boolean = false,
+    // Phase 4 — real-time analysis
+    val liveHistogram: FloatArray = FloatArray(256),
+    val focusMask: android.graphics.Bitmap? = null,
+    val zebraFraction: Float = 0f,
+    // Phase 4 — video
+    val videoState: VideoState = VideoState.Idle,
+    val videoLogProfile: LogProfile.Profile = LogProfile.Profile.CINE_D
 )
 
 enum class CaptureMode { PHOTO, HDR, NIGHT, PORTRAIT, VIDEO }
@@ -40,6 +48,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     private val processor = ImageProcessor(app)
     private val portraitProcessor = PortraitProcessor(app).also { it.init() }
     private val superResProcessor = SuperResProcessor(app).also { it.init() }
+    val videoController = VideoController(app)
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -48,6 +57,12 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { controller.cameraState.collect { s -> _ui.update { it.copy(cameraState = s) } } }
         viewModelScope.launch { controller.frameMetrics.collect { m -> _ui.update { it.copy(metrics = m) } } }
         viewModelScope.launch { controller.capabilities.collect { c -> _ui.update { it.copy(capabilities = c) } } }
+        viewModelScope.launch { videoController.videoState.collect { v -> _ui.update { it.copy(videoState = v) } } }
+        viewModelScope.launch {
+            controller.previewAnalyzer.result.collect { r ->
+                _ui.update { it.copy(liveHistogram = r.histogram, focusMask = r.focusMask, zebraFraction = r.zebraPixelsFraction) }
+            }
+        }
         viewModelScope.launch {
             controller.captureResultChannel.receiveAsFlow().collect { outcome ->
                 when (outcome) {
@@ -192,6 +207,32 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissResult() = _ui.update { it.copy(processingState = ProcessingState.Idle) }
     fun setPortraitBlur(r: Float) = _ui.update { it.copy(portraitBlurRadius = r) }
+
+    // ── Video controls ────────────────────────────────────────────────────────
+
+    fun toggleRecording() {
+        when (_ui.value.videoState) {
+            is VideoState.Idle, is VideoState.Saved -> startRecording()
+            is VideoState.Recording -> videoController.stopRecording()
+            is VideoState.Paused -> videoController.resumeRecording()
+        }
+    }
+
+    fun pauseRecording() = videoController.pauseRecording()
+
+    private fun startRecording() {
+        val surface = videoController.prepareSurface()
+        // Rebuild session with recording surface included
+        viewModelScope.launch {
+            controller.startPreviewWithExtras(listOf(surface))
+            videoController.startRecording()
+        }
+    }
+
+    fun setLogProfile(profile: LogProfile.Profile) {
+        videoController.logProfile = profile
+        _ui.update { it.copy(videoLogProfile = profile) }
+    }
     fun setAutoMode(auto: Boolean) {
         controller.updateParams { copy(isAutoExposure = auto, isAutoFocus = auto, isAutoWhiteBalance = auto) }
         _ui.update { it.copy(params = it.params.copy(isAutoExposure = auto, isAutoFocus = auto, isAutoWhiteBalance = auto)) }
@@ -214,6 +255,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         controller.close()
         portraitProcessor.close()
         superResProcessor.close()
+        videoController.release()
         super.onCleared()
     }
 }
