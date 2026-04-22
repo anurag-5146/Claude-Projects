@@ -11,6 +11,7 @@ opencv = "4.9.0"
 tflite = "2.14.0"
 tflite-support = "0.4.4"
 mediapipe = "0.10.14"
+coil = "2.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -29,6 +30,7 @@ tflite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tf
 tflite-support = { group = "org.tensorflow", name = "tensorflow-lite-support", version.ref = "tflite-support" }
 tflite-gpu = { group = "org.tensorflow", name = "tensorflow-lite-gpu-delegate-plugin", version.ref = "tflite-support" }
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipe" }
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 junit = { group = "junit", name = "junit", version = "4.13.2" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version = "1.2.1" }

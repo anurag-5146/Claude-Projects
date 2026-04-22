@@ -75,6 +75,7 @@ dependencies {
     implementation(libs.tflite.support)
     implementation(libs.tflite.gpu)
     implementation(libs.mediapipe.tasks.vision)
+    implementation(libs.coil.compose)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

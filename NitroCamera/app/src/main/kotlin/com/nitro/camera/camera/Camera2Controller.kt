@@ -126,7 +126,7 @@ class Camera2Controller(
                 val bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
                 scope.launch {
                     Log.d(TAG, "JPEG captured: ${bytes.size} bytes")
-                    captureResultChannel.send(JpegCaptured(bytes))
+                    captureResultChannel.send(CaptureOutcome.JpegCaptured(bytes))
                 }
             }
         }, cameraHandler)
@@ -472,10 +472,8 @@ class Camera2Controller(
 sealed class CaptureOutcome {
     data class Success(val result: TotalCaptureResult, val latencyMs: Long) : CaptureOutcome()
     data class Failure(val reason: String) : CaptureOutcome()
-}
-
-// Emitted by jpegReader listener when a JPEG frame arrives
-data class JpegCaptured(val bytes: ByteArray) {
-    override fun equals(other: Any?) = false  // ByteArray equality is identity-based
-    override fun hashCode() = bytes.contentHashCode()
+    data class JpegCaptured(val bytes: ByteArray) : CaptureOutcome() {
+        override fun equals(other: Any?) = this === other
+        override fun hashCode() = bytes.contentHashCode()
+    }
 }

@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
+import com.nitro.camera.camera.CameraState
 import com.nitro.camera.ui.CameraScreen
 import com.nitro.camera.ui.theme.NitroCameraTheme
 import com.nitro.camera.viewmodel.CameraViewModel

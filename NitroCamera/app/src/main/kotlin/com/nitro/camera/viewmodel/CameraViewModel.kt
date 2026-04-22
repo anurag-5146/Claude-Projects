@@ -80,7 +80,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
                     is CaptureOutcome.Failure -> _ui.update {
                         it.copy(processingState = ProcessingState.Error(outcome.reason))
                     }
-                    is com.nitro.camera.camera.JpegCaptured -> {
+                    is CaptureOutcome.JpegCaptured -> {
                         // PHOTO mode: save JPEG directly
                         viewModelScope.launch {
                             val uri = processor.saveJpegBytes(outcome.bytes, "NITRO")
