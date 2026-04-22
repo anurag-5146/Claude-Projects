@@ -55,6 +55,8 @@ class NAFNetProcessor(private val context: Context) {
         }.onFailure { Log.e(TAG, "NAFNet init failed", it); modelAvailable = false }
     }
 
+    val isActive: Boolean get() = interpreter != null
+
     suspend fun denoise(bitmap: Bitmap): Bitmap = withContext(Dispatchers.Default) {
         if (interpreter == null) return@withContext bitmap  // pass-through
         runCatching { nafNetDenoise(bitmap) }.getOrElse {

@@ -22,6 +22,9 @@ class PostProcessor(context: Context) {
     private val denoiser = NAFNetProcessor(context).also { it.init() }
     private val upscaler = SuperResProcessor(context).also { it.init() }
 
+    /** True if at least one neural model is active. When false, callers should skip post-processing entirely. */
+    val isActive: Boolean get() = denoiser.isActive || upscaler.isActive
+
     /**
      * Run denoise → super-res on [bitmap]. Emits progress updates via [onProgress].
      * Returns a new Bitmap (caller owns). Input [bitmap] is recycled if a new one is produced.

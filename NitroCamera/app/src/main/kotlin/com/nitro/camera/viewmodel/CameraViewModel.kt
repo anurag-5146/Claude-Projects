@@ -82,20 +82,25 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
                         it.copy(processingState = ProcessingState.Error(outcome.reason))
                     }
                     is CaptureOutcome.JpegCaptured -> {
-                        // PHOTO mode: decode → neural post-process → save
+                        // PHOTO mode: save JPEG directly when no neural models loaded (fast path).
+                        // Otherwise decode → neural post-process → save.
                         viewModelScope.launch {
-                            val bmp = outcome.bytes.decodeJpegToBitmap()
-                            if (bmp == null) {
-                                val uri = processor.saveJpegBytes(outcome.bytes, "NITRO")
-                                lastCapturedUri = uri
-                                _ui.update { it.copy(lastCapturedUri = uri) }
-                                return@launch
+                            val uri = if (!postProcessor.isActive) {
+                                processor.saveJpegBytes(outcome.bytes, "NITRO")
+                            } else {
+                                val bmp = outcome.bytes.decodeJpegToBitmap()
+                                    ?: return@launch run {
+                                        val u = processor.saveJpegBytes(outcome.bytes, "NITRO")
+                                        lastCapturedUri = u
+                                        _ui.update { it.copy(lastCapturedUri = u, processingState = ProcessingState.Done(u, 0L)) }
+                                    }
+                                val enhanced = postProcessor.process(bmp) { p, stage ->
+                                    _ui.update { it.copy(processingState = ProcessingState.Processing(0.5f + p * 0.5f, stage)) }
+                                }
+                                val saved = processor.saveBitmap(enhanced, "NITRO")
+                                enhanced.recycle()
+                                saved
                             }
-                            val enhanced = postProcessor.process(bmp) { p, stage ->
-                                _ui.update { it.copy(processingState = ProcessingState.Processing(0.5f + p * 0.5f, stage)) }
-                            }
-                            val uri = processor.saveBitmap(enhanced, "NITRO")
-                            enhanced.recycle()
                             lastCapturedUri = uri
                             _ui.update { it.copy(lastCapturedUri = uri, processingState = ProcessingState.Done(uri, 0L)) }
                         }

@@ -55,11 +55,13 @@ class SuperResProcessor(private val context: Context) {
         }.onFailure { Log.e(TAG, "ESRGAN init failed", it); modelAvailable = false }
     }
 
+    val isActive: Boolean get() = interpreter != null
+
     suspend fun upscale(bitmap: Bitmap): Bitmap = withContext(Dispatchers.Default) {
-        if (interpreter == null) return@withContext bicubicUpscale(bitmap, SCALE_FACTOR)
+        if (interpreter == null) return@withContext bitmap  // pass-through (no bicubic — avoids wasting CPU on identical quality)
         runCatching { esrganUpscale(bitmap) }.getOrElse {
-            Log.w(TAG, "ESRGAN inference failed, bicubic fallback: ${it.message}")
-            bicubicUpscale(bitmap, SCALE_FACTOR)
+            Log.w(TAG, "ESRGAN inference failed, pass-through: ${it.message}")
+            bitmap
         }
     }
 
