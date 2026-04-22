@@ -190,3 +190,38 @@ The last 10% is Apple/Google's ISP hardware + years of perceptual tuning.
 
 ## Review Section
 _(To be filled after implementation)_
+
+---
+
+## Phase 5 — Performance & Responsiveness (CURRENT)
+
+### Problem report from on-device testing (2026-04-22)
+- Preview looks **compressed / stretched** (wrong aspect ratio).
+- Preview is **laggy** — not butter-smooth.
+- Cannot freeze fast motion (fan blades ghost/blur).
+- App overall feels sluggish vs Pixel/Apple stock cameras.
+
+### Root causes identified
+1. **Preview size hardcoded** to 1920×1080 (16:9) regardless of display aspect — causes TextureView stretch distortion.
+2. **ISP `HIGH_QUALITY` modes applied to preview frames** (NR / Edge / Aberration) — these are meant for STILL only; they massively inflate per-frame latency.
+3. **`CONTROL_AE_TARGET_FPS_RANGE` never set** — device defaults to 15–30 fps. Need 60 fps for smooth feel.
+4. **No minimum-shutter cap in auto mode** — AE picks 1/30s in normal light; fan blades need ≤ 1/500s.
+5. **`Viewfinder` TextureView has no aspect-ratio handling** — fills the parent and stretches.
+6. **Every `updateParams()` call rebuilds the repeating request** — can cause micro-stutter on slider drags.
+
+### Fixes (this phase)
+- [ ] `Camera2Controller`: query `StreamConfigurationMap` for the largest preview size matching the display aspect (4:3 / 16:9 / full).
+- [ ] `Camera2Controller`: use `NOISE_REDUCTION_MODE_FAST`, `EDGE_MODE_FAST`, `COLOR_CORRECTION_ABERRATION_MODE_FAST` on preview; keep HIGH_QUALITY only on STILL_CAPTURE.
+- [ ] `Camera2Controller`: set `CONTROL_AE_TARGET_FPS_RANGE` to the highest stable available range (prefer [60,60], fallback [30,60] or [30,30]).
+- [ ] `Camera2Controller`: add `CaptureMode.ACTION` — locks AE to shutter ≤ 1/1000s and lets ISO float to compensate (freezes fan blades, sports, etc.).
+- [ ] `Camera2Controller`: expose chosen preview `Size` via StateFlow so UI can size the surface correctly.
+- [ ] `Viewfinder`: wrap TextureView in an aspect-ratio-preserving container (center-crop by default; letterbox as option).
+- [ ] `CameraViewModel`: add `setActionMode(Boolean)` and expose preview aspect to UI.
+- [ ] `CameraScreen`: add an "ACTION" chip next to PHOTO/HDR/NIGHT/... with a lightning-bolt icon.
+- [ ] Verify on device: preview looks natural (no stretch), 60fps preview, fan blades frozen in ACTION mode.
+
+### Later (Phase 5b, if still not smooth enough)
+- Move PreviewAnalyzer YUV→Mat copy to a direct ByteBuffer.get() (currently has a per-row `ByteArray` copy).
+- Drop analysis to 320×240 when device thermal-throttles.
+- Consider `SurfaceView` instead of `TextureView` (zero-copy path on some Qualcomm/MTK devices).
+- Investigate `CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION` vs OFF trade-off.

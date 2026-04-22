@@ -17,7 +17,9 @@ data class CaptureParameters(
     val isAutoExposure: Boolean = true,
     val isAutoFocus: Boolean = true,
     val isAutoWhiteBalance: Boolean = true,
-    val zoomRatio: Float = 1f
+    val zoomRatio: Float = 1f,
+    /** ACTION mode: cap shutter at ≤ 1/1000s (let ISO float) to freeze fast motion. */
+    val actionMode: Boolean = false
 )
 
 data class FrameMetrics(
@@ -34,5 +36,7 @@ data class CameraCapabilities(
     val supportsRaw: Boolean = false,
     val supportsZsl: Boolean = false,
     val maxZoom: Float = 1f,
-    val sensorSize: android.util.Size = android.util.Size(0, 0)
+    val sensorSize: android.util.Size = android.util.Size(0, 0),
+    val previewSize: android.util.Size = android.util.Size(1920, 1080),
+    val previewFpsRange: android.util.Range<Int> = android.util.Range(30, 30)
 )

@@ -77,9 +77,14 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun startCamera(surfaceTexture: SurfaceTexture) = viewModelScope.launch {
+    fun startCamera(surfaceTexture: SurfaceTexture, surfaceWidth: Int, surfaceHeight: Int) = viewModelScope.launch {
         controller.open()
-        controller.startPreview(surfaceTexture)
+        controller.startPreview(surfaceTexture, surfaceWidth, surfaceHeight)
+    }
+
+    fun setActionMode(enabled: Boolean) {
+        controller.updateParams { copy(actionMode = enabled) }
+        _ui.update { it.copy(params = it.params.copy(actionMode = enabled)) }
     }
 
     // ── Capture dispatch ──────────────────────────────────────────────────────

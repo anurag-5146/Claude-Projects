@@ -11,6 +11,7 @@ import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import android.util.Range
 import android.util.Size
 import android.view.Surface
 import kotlinx.coroutines.CoroutineScope
@@ -25,8 +26,8 @@ import kotlin.coroutines.resumeWithException
 
 private const val TAG = "Camera2Controller"
 private const val JPEG_QUALITY = 97
-private const val PREVIEW_WIDTH = 1920
-private const val PREVIEW_HEIGHT = 1080
+// ACTION mode: max shutter time so fast motion (e.g. fan blades) is frozen.
+private const val ACTION_MAX_SHUTTER_NS = 1_000_000_000L / 1000L  // 1/1000 s
 
 class Camera2Controller(
     private val context: Context,
@@ -60,6 +61,11 @@ class Camera2Controller(
     private var captureStartTimeMs = 0L
     val previewAnalyzer = PreviewAnalyzer(scope, cameraHandler)
 
+    // View (SurfaceTexture) dimensions — fed from the Composable so we can
+    // pick a preview size with matching aspect ratio.
+    private var viewWidth = 0
+    private var viewHeight = 0
+
     // ── Open / Close ──────────────────────────────────────────────────────────
 
     @SuppressLint("MissingPermission")
@@ -91,13 +97,26 @@ class Camera2Controller(
 
     // ── Preview ───────────────────────────────────────────────────────────────
 
-    suspend fun startPreview(surfaceTexture: SurfaceTexture) {
+    suspend fun startPreview(
+        surfaceTexture: SurfaceTexture,
+        surfaceWidth: Int,
+        surfaceHeight: Int,
+        cameraId: String = findBackCamera()
+    ) {
         val device = cameraDevice ?: return
+        viewWidth = surfaceWidth
+        viewHeight = surfaceHeight
 
-        surfaceTexture.setDefaultBufferSize(PREVIEW_WIDTH, PREVIEW_HEIGHT)
+        // Choose the best preview size matching the view aspect ratio.
+        val previewSize = choosePreviewSize(cameraId, surfaceWidth, surfaceHeight)
+        surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
         val surface = Surface(surfaceTexture).also { previewSurface = it }
 
-        jpegReader = ImageReader.newInstance(4032, 3024, ImageFormat.JPEG, 2)
+        _capabilities.value = _capabilities.value.copy(previewSize = previewSize)
+
+        // JPEG at full sensor size (or max available JPEG size).
+        val jpegSize = chooseJpegSize(cameraId)
+        jpegReader = ImageReader.newInstance(jpegSize.width, jpegSize.height, ImageFormat.JPEG, 2)
         rawReader = if (_capabilities.value.supportsRaw) {
             ImageReader.newInstance(
                 _capabilities.value.sensorSize.width,
@@ -137,9 +156,6 @@ class Camera2Controller(
     private fun sendRepeatingPreview() {
         val session = captureSession ?: return
         val surface = previewSurface ?: return
-        // Also feed the analysis surface so PreviewAnalyzer gets frames
-        val analysisSurface = previewAnalyzer.imageReader.surface
-
         val request = buildPreviewRequest(surface)
         session.setRepeatingRequest(request, previewCaptureCallback, cameraHandler)
     }
@@ -161,7 +177,7 @@ class Camera2Controller(
         val request = (cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             ?: return).apply {
             surfaces.forEach { addTarget(it) }
-            applyParams(this)
+            applyParams(this, forStillCapture = true)
             set(CaptureRequest.JPEG_QUALITY, JPEG_QUALITY.toByte())
             set(CaptureRequest.JPEG_ORIENTATION, 90)
             set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE,
@@ -174,7 +190,10 @@ class Camera2Controller(
     // ── Parameter Control ─────────────────────────────────────────────────────
 
     fun updateParams(update: CaptureParameters.() -> CaptureParameters) {
-        params = params.update()
+        val next = params.update()
+        // Skip rebuild when nothing actually changed (prevents stutter on sliders).
+        if (next == params) return
+        params = next
         sendRepeatingPreview()
     }
 
@@ -184,17 +203,36 @@ class Camera2Controller(
         return (cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)).apply {
             addTarget(surface)
             addTarget(previewAnalyzer.imageReader.surface)
-            applyParams(this)
+            applyParams(this, forStillCapture = false)
+            // Ask the device for the highest stable FPS range for smooth preview.
+            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, _capabilities.value.previewFpsRange)
         }.build()
     }
 
-    private fun applyParams(builder: CaptureRequest.Builder) = with(builder) {
-        if (params.isAutoExposure) {
-            set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-        } else {
-            set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-            set(CaptureRequest.SENSOR_SENSITIVITY, params.iso)
-            set(CaptureRequest.SENSOR_EXPOSURE_TIME, params.shutterSpeedNs)
+    private fun applyParams(builder: CaptureRequest.Builder, forStillCapture: Boolean) = with(builder) {
+        // Auto vs manual exposure (ACTION mode caps shutter inside AE).
+        when {
+            params.actionMode && params.isAutoExposure -> {
+                // Let AE run, but clamp max shutter time so motion is frozen.
+                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                // FPS range implicitly caps min exposure; also request the Action scene.
+                val high = _capabilities.value.previewFpsRange.upper.coerceAtLeast(30)
+                set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(high, high))
+                set(CaptureRequest.CONTROL_SCENE_MODE, CaptureRequest.CONTROL_SCENE_MODE_SPORTS)
+                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_USE_SCENE_MODE)
+            }
+            params.isAutoExposure -> {
+                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            }
+            else -> {
+                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                val shutter = if (params.actionMode)
+                    minOf(params.shutterSpeedNs, ACTION_MAX_SHUTTER_NS)
+                else params.shutterSpeedNs
+                set(CaptureRequest.SENSOR_SENSITIVITY, params.iso)
+                set(CaptureRequest.SENSOR_EXPOSURE_TIME, shutter)
+            }
         }
 
         if (params.isAutoWhiteBalance) {
@@ -211,10 +249,27 @@ class Camera2Controller(
         }
 
         set(CaptureRequest.CONTROL_ZOOM_RATIO, params.zoomRatio)
-        set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
-        set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
-        set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE,
-            CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY)
+
+        // ── CRITICAL PERF FIX ──
+        // HIGH_QUALITY modes are for the final still only — on preview they
+        // crush frame rate and add 50–150 ms of processing latency per frame.
+        val ispQuality = if (forStillCapture)
+            CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY
+        else
+            CaptureRequest.NOISE_REDUCTION_MODE_FAST
+        set(CaptureRequest.NOISE_REDUCTION_MODE, ispQuality)
+
+        val edgeQuality = if (forStillCapture)
+            CaptureRequest.EDGE_MODE_HIGH_QUALITY
+        else
+            CaptureRequest.EDGE_MODE_FAST
+        set(CaptureRequest.EDGE_MODE, edgeQuality)
+
+        val aberrationQuality = if (forStillCapture)
+            CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY
+        else
+            CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_FAST
+        set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, aberrationQuality)
     }
 
     private val previewCaptureCallback = object : CameraCaptureSession.CaptureCallback() {
@@ -299,21 +354,76 @@ class Camera2Controller(
         val supportsZsl = CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_PRIVATE_REPROCESSING in caps.toList()
 
         val isoRange = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
-            ?: android.util.Range(100, 3200)
+            ?: Range(100, 3200)
         val exposureRange = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
-            ?: android.util.Range(1_000_000L, 1_000_000_000L)
+            ?: Range(1_000_000L, 1_000_000_000L)
         val maxZoom = chars.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)?.upper ?: 1f
         val sensorSize = chars.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE)
-            ?: android.util.Size(4032, 3024)
+            ?: Size(4032, 3024)
 
-        _capabilities.value = CameraCapabilities(
+        val fpsRange = pickBestFpsRange(chars)
+
+        _capabilities.value = _capabilities.value.copy(
             supportedIsoRange = isoRange,
             supportedExposureRange = exposureRange,
             supportsRaw = supportsRaw,
             supportsZsl = supportsZsl,
             maxZoom = maxZoom,
-            sensorSize = sensorSize
+            sensorSize = sensorSize,
+            previewFpsRange = fpsRange
         )
+    }
+
+    /** Highest stable FPS range (prefer [60,60] > [30,60] > [30,30]). */
+    private fun pickBestFpsRange(chars: CameraCharacteristics): Range<Int> {
+        val ranges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+            ?: return Range(30, 30)
+        // Prefer fixed high: (60,60), (120,120); otherwise top-of-range.
+        val fixed = ranges.filter { it.lower == it.upper }.maxByOrNull { it.upper }
+        val variable = ranges.maxByOrNull { it.upper }
+        val pick = when {
+            fixed != null && fixed.upper >= 60 -> fixed
+            variable != null && variable.upper >= 60 -> variable
+            else -> ranges.maxByOrNull { it.upper } ?: Range(30, 30)
+        }
+        Log.d(TAG, "Chose FPS range $pick (available: ${ranges.toList()})")
+        return pick
+    }
+
+    /** Largest preview size that matches the view aspect ratio and fits within 1920x1440. */
+    private fun choosePreviewSize(cameraId: String, viewW: Int, viewH: Int): Size {
+        val chars = cameraManager.getCameraCharacteristics(cameraId)
+        val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            ?: return Size(1920, 1080)
+        val candidates = map.getOutputSizes(SurfaceTexture::class.java) ?: return Size(1920, 1080)
+
+        val targetAspect = if (viewW > 0 && viewH > 0) {
+            // Device is portrait, but camera sizes are reported landscape.
+            maxOf(viewW, viewH).toFloat() / minOf(viewW, viewH).toFloat()
+        } else {
+            16f / 9f
+        }
+
+        // Filter to sizes within a reasonable preview budget and closest aspect.
+        val maxArea = 1920 * 1440
+        val best = candidates
+            .filter { it.width * it.height <= maxArea }
+            .minByOrNull { s ->
+                val sAspect = s.width.toFloat() / s.height.toFloat()
+                val aspectDiff = kotlin.math.abs(sAspect - targetAspect)
+                // Primary key aspect, secondary key: -area (prefer larger).
+                aspectDiff * 10_000f + (maxArea - s.width * s.height) / maxArea.toFloat()
+            } ?: Size(1920, 1080)
+        Log.d(TAG, "Chose preview size $best for view ${viewW}x$viewH (target aspect $targetAspect)")
+        return best
+    }
+
+    private fun chooseJpegSize(cameraId: String): Size {
+        val chars = cameraManager.getCameraCharacteristics(cameraId)
+        val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            ?: return Size(4032, 3024)
+        val sizes = map.getOutputSizes(ImageFormat.JPEG) ?: return Size(4032, 3024)
+        return sizes.maxByOrNull { it.width.toLong() * it.height.toLong() } ?: Size(4032, 3024)
     }
 
     private fun findBackCamera(): String =
@@ -321,7 +431,6 @@ class Camera2Controller(
             cameraManager.getCameraCharacteristics(id)
                 .get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
         }
-}
 
     // ── Burst capture gateway ─────────────────────────────────────────────────
 
@@ -340,7 +449,7 @@ class Camera2Controller(
             device = dev,
             session = sess,
             handler = cameraHandler,
-            baseParams = CaptureParameters()
+            baseParams = params
         )
         return burstCtrl.block(onFrameCaptured)
     }

@@ -59,7 +59,7 @@ fun CameraScreen(viewModel: CameraViewModel) {
                 .pointerInput(Unit) {
                     detectTapGestures(onDoubleTap = { showProDials = !showProDials })
                 },
-            onSurfaceReady = { viewModel.startCamera(it) }
+            onSurfaceReady = { texture, w, h -> viewModel.startCamera(texture, w, h) }
         )
 
         // ── Real-time overlay (focus peaking + zebra + live histogram) ─────────
@@ -86,6 +86,7 @@ fun CameraScreen(viewModel: CameraViewModel) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
             horizontalAlignment = Alignment.End
         ) {
+            HudToggleChip("⚡ACTION", ui.params.actionMode) { viewModel.setActionMode(!ui.params.actionMode) }
             HudToggleChip("PEAK", ui.showFocusPeaking)  { viewModel.toggleFocusPeaking() }
             HudToggleChip("ZEBRA", ui.showZebraStripes) { viewModel.toggleZebraStripes() }
             HudToggleChip("HIST", ui.showHistogram)     { viewModel.toggleHistogram() }
