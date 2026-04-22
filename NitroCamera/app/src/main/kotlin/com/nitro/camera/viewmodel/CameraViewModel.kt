@@ -29,7 +29,9 @@ data class UiState(
     val zebraFraction: Float = 0f,
     // Phase 4 — video
     val videoState: VideoState = VideoState.Idle,
-    val videoLogProfile: LogProfile.Profile = LogProfile.Profile.CINE_D
+    val videoLogProfile: LogProfile.Profile = LogProfile.Profile.CINE_D,
+    // Phase 5b — photo preview dialog
+    val lastCapturedUri: String = ""
 )
 
 enum class CaptureMode { PHOTO, HDR, NIGHT, PORTRAIT, VIDEO }
@@ -53,6 +55,12 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
+    // Cache for pause/resume
+    private var lastSurfaceTexture: android.graphics.SurfaceTexture? = null
+    private var lastSurfaceWidth: Int = 0
+    private var lastSurfaceHeight: Int = 0
+    private var lastCapturedUri: String = ""
+
     init {
         viewModelScope.launch { controller.cameraState.collect { s -> _ui.update { it.copy(cameraState = s) } } }
         viewModelScope.launch { controller.frameMetrics.collect { m -> _ui.update { it.copy(metrics = m) } } }
@@ -67,10 +75,18 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
             controller.captureResultChannel.receiveAsFlow().collect { outcome ->
                 when (outcome) {
                     is CaptureOutcome.Success -> _ui.update {
-                        it.copy(processingState = ProcessingState.Done("", outcome.latencyMs))
+                        it.copy(processingState = ProcessingState.Done(lastCapturedUri, outcome.latencyMs))
                     }
                     is CaptureOutcome.Failure -> _ui.update {
                         it.copy(processingState = ProcessingState.Error(outcome.reason))
+                    }
+                    is com.nitro.camera.camera.JpegCaptured -> {
+                        // PHOTO mode: save JPEG directly
+                        viewModelScope.launch {
+                            val uri = processor.saveJpegBytes(outcome.bytes, "NITRO")
+                            lastCapturedUri = uri
+                            _ui.update { it.copy(lastCapturedUri = uri) }
+                        }
                     }
                 }
             }
@@ -78,13 +94,41 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startCamera(surfaceTexture: SurfaceTexture, surfaceWidth: Int, surfaceHeight: Int) = viewModelScope.launch {
+        // Cache surface for pause/resume
+        lastSurfaceTexture = surfaceTexture
+        lastSurfaceWidth = surfaceWidth
+        lastSurfaceHeight = surfaceHeight
         controller.open()
         controller.startPreview(surfaceTexture, surfaceWidth, surfaceHeight)
+    }
+
+    fun restartCamera() = viewModelScope.launch {
+        if (lastSurfaceTexture != null) {
+            controller.open()
+            controller.startPreview(lastSurfaceTexture!!, lastSurfaceWidth, lastSurfaceHeight)
+        }
     }
 
     fun setActionMode(enabled: Boolean) {
         controller.updateParams { copy(actionMode = enabled) }
         _ui.update { it.copy(params = it.params.copy(actionMode = enabled)) }
+    }
+
+    fun clearPreview() {
+        lastCapturedUri = ""
+        _ui.update { it.copy(lastCapturedUri = "") }
+    }
+
+    fun deleteLastPhoto() = viewModelScope.launch {
+        if (lastCapturedUri.isNotEmpty()) {
+            try {
+                val uri = android.net.Uri.parse(lastCapturedUri)
+                getApplication<android.app.Application>().contentResolver.delete(uri, null, null)
+                clearPreview()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     // ── Capture dispatch ──────────────────────────────────────────────────────

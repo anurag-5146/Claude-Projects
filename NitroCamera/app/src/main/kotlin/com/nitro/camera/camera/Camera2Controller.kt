@@ -117,6 +117,20 @@ class Camera2Controller(
         // JPEG at full sensor size (or max available JPEG size).
         val jpegSize = chooseJpegSize(cameraId)
         jpegReader = ImageReader.newInstance(jpegSize.width, jpegSize.height, ImageFormat.JPEG, 2)
+
+        // Wire JPEG listener so PHOTO mode capture saves the JPEG
+        jpegReader!!.setOnImageAvailableListener({ reader ->
+            reader.acquireLatestImage()?.use { image ->
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
+                scope.launch {
+                    Log.d(TAG, "JPEG captured: ${bytes.size} bytes")
+                    captureResultChannel.send(JpegCaptured(bytes))
+                }
+            }
+        }, cameraHandler)
+
         rawReader = if (_capabilities.value.supportsRaw) {
             ImageReader.newInstance(
                 _capabilities.value.sensorSize.width,
@@ -458,4 +472,10 @@ class Camera2Controller(
 sealed class CaptureOutcome {
     data class Success(val result: TotalCaptureResult, val latencyMs: Long) : CaptureOutcome()
     data class Failure(val reason: String) : CaptureOutcome()
+}
+
+// Emitted by jpegReader listener when a JPEG frame arrives
+data class JpegCaptured(val bytes: ByteArray) {
+    override fun equals(other: Any?) = false  // ByteArray equality is identity-based
+    override fun hashCode() = bytes.contentHashCode()
 }

@@ -193,6 +193,22 @@ fun CameraScreen(viewModel: CameraViewModel) {
             }
         }
 
+        // ── Photo Preview Dialog (right of capture button) ────────────────────
+        if (ui.lastCapturedUri.isNotEmpty() && ui.captureMode != CaptureMode.VIDEO) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 32.dp, end = 24.dp)
+            ) {
+                PhotoPreviewDialog(
+                    uri = ui.lastCapturedUri,
+                    onDelete = { viewModel.deleteLastPhoto() },
+                    onRetake = { viewModel.clearPreview() },
+                    onShare = {}  // Share already handled in composable
+                )
+            }
+        }
+
         // ── Camera error ──────────────────────────────────────────────────────
         if (ui.cameraState is CameraState.Error) {
             Box(Modifier.fillMaxSize().background(Color.Black), Alignment.Center) {

@@ -49,6 +49,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (viewModel.controller.cameraState.value == CameraState.Closed) {
+            viewModel.restartCamera()
+        }
+    }
+
     override fun onPause() {
         super.onPause()
         viewModel.controller.close()
