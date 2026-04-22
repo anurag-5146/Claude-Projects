@@ -49,7 +49,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     val controller = Camera2Controller(app, viewModelScope)
     private val processor = ImageProcessor(app)
     private val portraitProcessor = PortraitProcessor(app).also { it.init() }
-    private val superResProcessor = SuperResProcessor(app).also { it.init() }
+    private val postProcessor = PostProcessor(app)
     val videoController = VideoController(app)
 
     private val _ui = MutableStateFlow(UiState())
@@ -75,17 +75,29 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
             controller.captureResultChannel.receiveAsFlow().collect { outcome ->
                 when (outcome) {
                     is CaptureOutcome.Success -> _ui.update {
-                        it.copy(processingState = ProcessingState.Done(lastCapturedUri, outcome.latencyMs))
+                        // PHOTO sensor capture done; wait for JpegCaptured to complete post-processing.
+                        it.copy(processingState = ProcessingState.Processing(0.4f, "Enhancing…"))
                     }
                     is CaptureOutcome.Failure -> _ui.update {
                         it.copy(processingState = ProcessingState.Error(outcome.reason))
                     }
                     is CaptureOutcome.JpegCaptured -> {
-                        // PHOTO mode: save JPEG directly
+                        // PHOTO mode: decode → neural post-process → save
                         viewModelScope.launch {
-                            val uri = processor.saveJpegBytes(outcome.bytes, "NITRO")
+                            val bmp = outcome.bytes.decodeJpegToBitmap()
+                            if (bmp == null) {
+                                val uri = processor.saveJpegBytes(outcome.bytes, "NITRO")
+                                lastCapturedUri = uri
+                                _ui.update { it.copy(lastCapturedUri = uri) }
+                                return@launch
+                            }
+                            val enhanced = postProcessor.process(bmp) { p, stage ->
+                                _ui.update { it.copy(processingState = ProcessingState.Processing(0.5f + p * 0.5f, stage)) }
+                            }
+                            val uri = processor.saveBitmap(enhanced, "NITRO")
+                            enhanced.recycle()
                             lastCapturedUri = uri
-                            _ui.update { it.copy(lastCapturedUri = uri) }
+                            _ui.update { it.copy(lastCapturedUri = uri, processingState = ProcessingState.Done(uri, 0L)) }
                         }
                     }
                 }
@@ -184,8 +196,13 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(processingState = ProcessingState.Processing(0.75f, "Color science…")) }
         val finalBitmap = ColorScience.process(bokehBitmap, sceneParams)
 
-        val uri = processor.saveBitmap(finalBitmap, "NITRO_PORTRAIT")
-        _ui.update { it.copy(processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
+        val enhanced = postProcessor.process(finalBitmap) { p, stage ->
+            _ui.update { it.copy(processingState = ProcessingState.Processing(0.8f + p * 0.2f, stage)) }
+        }
+        val uri = processor.saveBitmap(enhanced, "NITRO_PORTRAIT")
+        enhanced.recycle()
+        lastCapturedUri = uri
+        _ui.update { it.copy(lastCapturedUri = uri, processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
     }
 
     private fun captureHdr() = viewModelScope.launch {
@@ -211,8 +228,13 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         val (scene, _) = SceneClassifier.classify(bitmap)
         val finalBitmap = ColorScience.process(bitmap, SceneClassifier.paramsFor(scene))
 
-        val uri = processor.saveBitmap(finalBitmap, "NITRO_HDR")
-        _ui.update { it.copy(processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
+        val enhanced = postProcessor.process(finalBitmap) { p, stage ->
+            _ui.update { it.copy(processingState = ProcessingState.Processing(0.8f + p * 0.2f, stage)) }
+        }
+        val uri = processor.saveBitmap(enhanced, "NITRO_HDR")
+        enhanced.recycle()
+        lastCapturedUri = uri
+        _ui.update { it.copy(lastCapturedUri = uri, processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
     }
 
     private fun captureNight() = viewModelScope.launch {
@@ -237,8 +259,13 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         val nightParams = SceneClassifier.paramsFor(Scene.NIGHT)
         val finalBitmap = ColorScience.process(bitmap, nightParams)
 
-        val uri = processor.saveBitmap(finalBitmap, "NITRO_NIGHT")
-        _ui.update { it.copy(processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
+        val enhanced = postProcessor.process(finalBitmap) { p, stage ->
+            _ui.update { it.copy(processingState = ProcessingState.Processing(0.8f + p * 0.2f, stage)) }
+        }
+        val uri = processor.saveBitmap(enhanced, "NITRO_NIGHT")
+        enhanced.recycle()
+        lastCapturedUri = uri
+        _ui.update { it.copy(lastCapturedUri = uri, processingState = ProcessingState.Done(uri, System.currentTimeMillis() - t0)) }
     }
 
     // ── Scene detection ───────────────────────────────────────────────────────
@@ -303,7 +330,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         controller.close()
         portraitProcessor.close()
-        superResProcessor.close()
+        postProcessor.close()
         videoController.release()
         super.onCleared()
     }

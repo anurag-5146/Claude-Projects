@@ -14,61 +14,60 @@ import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
-private const val TAG = "SuperResProcessor"
+private const val TAG = "NAFNetProcessor"
 
-// Real-ESRGAN x2 TFLite. Convert weights per docs/MODEL_CONVERSION.md.
-// Place in app/src/main/assets/realesrgan_x2.tflite
-private const val ESRGAN_MODEL = "realesrgan_x2.tflite"
-private const val PATCH_SIZE = 256        // Process in 256×256 patches
-private const val PATCH_OVERLAP = 16      // Overlap to avoid seam artefacts
-private const val SCALE_FACTOR = 2
+// NAFNet denoise TFLite. Convert weights per docs/MODEL_CONVERSION.md.
+// Place in app/src/main/assets/nafnet.tflite
+private const val NAFNET_MODEL = "nafnet.tflite"
+private const val PATCH_SIZE = 256
+private const val PATCH_OVERLAP = 16
 
 /**
- * Super-resolution upscaling:
- *   - If ESRGAN model is present → 4× ML upscale patch-by-patch (GPU delegate)
- *   - Otherwise → high-quality Lanczos bicubic fallback
+ * Learned denoiser. Removes sensor noise + chroma mush that bilateral
+ * filtering leaves behind after burst merge.
  *
- * Patch-based inference keeps peak RAM under 200 MB even on low-end devices.
- * Triggered automatically when digital zoom > 2× or on explicit SR mode.
+ *   - Model present → NAFNet inference patch-by-patch (GPU delegate)
+ *   - Model absent  → graceful pass-through (original bitmap)
+ *
+ * Same resolution in / out. Tiled at 256×256 with 16 px overlap.
  */
-class SuperResProcessor(private val context: Context) {
+class NAFNetProcessor(private val context: Context) {
 
     private var interpreter: Interpreter? = null
     private var gpuDelegate: GpuDelegate? = null
     private var modelAvailable = false
 
     fun init() {
-        modelAvailable = context.assets.list("")?.contains(ESRGAN_MODEL) == true
-        if (!modelAvailable) { Log.w(TAG, "ESRGAN model not found — bicubic fallback active"); return }
+        modelAvailable = context.assets.list("")?.contains(NAFNET_MODEL) == true
+        if (!modelAvailable) { Log.w(TAG, "NAFNet model not found — denoise disabled"); return }
 
         runCatching {
             val opts = Interpreter.Options()
             if (CompatibilityList().isDelegateSupportedOnThisDevice) {
                 gpuDelegate = GpuDelegate()
                 opts.addDelegate(gpuDelegate)
-                Log.d(TAG, "ESRGAN running on GPU")
+                Log.d(TAG, "NAFNet running on GPU")
             } else {
                 opts.numThreads = 4
             }
             interpreter = Interpreter(loadModelFile(), opts)
-            Log.d(TAG, "ESRGAN interpreter ready")
-        }.onFailure { Log.e(TAG, "ESRGAN init failed", it); modelAvailable = false }
+            Log.d(TAG, "NAFNet interpreter ready")
+        }.onFailure { Log.e(TAG, "NAFNet init failed", it); modelAvailable = false }
     }
 
-    suspend fun upscale(bitmap: Bitmap): Bitmap = withContext(Dispatchers.Default) {
-        if (interpreter == null) return@withContext bicubicUpscale(bitmap, SCALE_FACTOR)
-        runCatching { esrganUpscale(bitmap) }.getOrElse {
-            Log.w(TAG, "ESRGAN inference failed, bicubic fallback: ${it.message}")
-            bicubicUpscale(bitmap, SCALE_FACTOR)
+    suspend fun denoise(bitmap: Bitmap): Bitmap = withContext(Dispatchers.Default) {
+        if (interpreter == null) return@withContext bitmap  // pass-through
+        runCatching { nafNetDenoise(bitmap) }.getOrElse {
+            Log.w(TAG, "NAFNet inference failed, pass-through: ${it.message}")
+            bitmap
         }
     }
 
-    // ── ESRGAN patch inference ────────────────────────────────────────────────
+    // ── NAFNet patch inference ────────────────────────────────────────────────
 
-    private fun esrganUpscale(src: Bitmap): Bitmap {
+    private fun nafNetDenoise(src: Bitmap): Bitmap {
         val inW = src.width; val inH = src.height
-        val outW = inW * SCALE_FACTOR; val outH = inH * SCALE_FACTOR
-        val result = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val result = Bitmap.createBitmap(inW, inH, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(result)
 
         val step = PATCH_SIZE - PATCH_OVERLAP
@@ -81,15 +80,13 @@ class SuperResProcessor(private val context: Context) {
                 val patch = Bitmap.createBitmap(src, x, y, pw, ph)
                 val paddedPatch = if (pw < PATCH_SIZE || ph < PATCH_SIZE) padPatch(patch) else patch
 
-                val upscaled = runPatchInference(paddedPatch)
+                val denoised = runPatchInference(paddedPatch)
 
-                // Crop to actual output size (remove padding)
-                val cropW = pw * SCALE_FACTOR; val cropH = ph * SCALE_FACTOR
-                val cropped = Bitmap.createBitmap(upscaled, 0, 0, cropW, cropH)
-                canvas.drawBitmap(cropped, (x * SCALE_FACTOR).toFloat(), (y * SCALE_FACTOR).toFloat(), null)
+                val cropped = Bitmap.createBitmap(denoised, 0, 0, pw, ph)
+                canvas.drawBitmap(cropped, x.toFloat(), y.toFloat(), null)
 
                 if (paddedPatch != patch) paddedPatch.recycle()
-                patch.recycle(); upscaled.recycle(); cropped.recycle()
+                patch.recycle(); denoised.recycle(); cropped.recycle()
                 x += step
             }
             y += step
@@ -99,12 +96,11 @@ class SuperResProcessor(private val context: Context) {
 
     private fun runPatchInference(patch: Bitmap): Bitmap {
         val input = bitmapToInputBuffer(patch)
-        val outputSize = PATCH_SIZE * SCALE_FACTOR
-        val outputBuffer = ByteBuffer.allocateDirect(1 * outputSize * outputSize * 3 * 4)
+        val outputBuffer = ByteBuffer.allocateDirect(1 * PATCH_SIZE * PATCH_SIZE * 3 * 4)
             .order(ByteOrder.nativeOrder())
 
         interpreter!!.run(input, outputBuffer)
-        return outputBufferToBitmap(outputBuffer, outputSize, outputSize)
+        return outputBufferToBitmap(outputBuffer, PATCH_SIZE, PATCH_SIZE)
     }
 
     private fun bitmapToInputBuffer(bmp: Bitmap): ByteBuffer {
@@ -140,13 +136,8 @@ class SuperResProcessor(private val context: Context) {
         return padded
     }
 
-    // ── Bicubic fallback ──────────────────────────────────────────────────────
-
-    private fun bicubicUpscale(src: Bitmap, scale: Int): Bitmap =
-        Bitmap.createScaledBitmap(src, src.width * scale, src.height * scale, true)
-
     private fun loadModelFile(): MappedByteBuffer {
-        val fd = context.assets.openFd(ESRGAN_MODEL)
+        val fd = context.assets.openFd(NAFNET_MODEL)
         return FileInputStream(fd.fileDescriptor).channel
             .map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
     }
