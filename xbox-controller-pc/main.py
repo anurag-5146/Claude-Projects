@@ -43,6 +43,9 @@ try:
     def _get_foreground_hwnd() -> int:
         return _user32.GetForegroundWindow()
 
+    def _is_iconic(hwnd: int) -> bool:
+        return bool(hwnd and _user32.IsIconic(hwnd))
+
     def _minimize_hwnd(hwnd: int) -> None:
         if hwnd:
             _user32.ShowWindow(hwnd, _SW_MINIMIZE)
@@ -57,6 +60,7 @@ try:
 
 except (OSError, AttributeError):
     def _get_foreground_hwnd() -> int: return 0          # type: ignore[misc]
+    def _is_iconic(hwnd: int) -> bool: return False      # type: ignore[misc]
     def _minimize_hwnd(hwnd: int) -> None: pass          # type: ignore[misc]
     def _restore_hwnd(hwnd: int) -> None: pass           # type: ignore[misc]
 
@@ -89,14 +93,17 @@ def main() -> None:
         if new_mode == Mode.DESKTOP:
             # Release all virtual-pad inputs so the game doesn't see stuck buttons.
             virtual_pad.release_all()
-            # Save and minimize the game window.
-            _game_hwnd = _get_foreground_hwnd()
-            if _game_hwnd:
+            # If game window is still visible, save and minimize it.
+            # (If already minimized — e.g. watcher-triggered — just save the hwnd.)
+            fg = _get_foreground_hwnd()
+            if fg:
+                _game_hwnd = fg
+            if _game_hwnd and not _is_iconic(_game_hwnd):
                 logger.info("Minimising game window (hwnd=%d).", _game_hwnd)
                 _minimize_hwnd(_game_hwnd)
 
         elif new_mode == Mode.GAME:
-            # Restore the game window so the player is back in-game immediately.
+            # Restore the game window.
             if _game_hwnd:
                 logger.info("Restoring game window (hwnd=%d).", _game_hwnd)
                 _restore_hwnd(_game_hwnd)
@@ -121,6 +128,41 @@ def main() -> None:
         quit_fn        = lambda: (loop.stop(), osd.destroy()),
     )
     tray.start()
+
+    # ------------------------------------------------------------------
+    # Window watcher — auto-switch mode when game is minimized/restored
+    # ------------------------------------------------------------------
+    def _window_watcher() -> None:
+        import time
+        nonlocal _game_hwnd
+
+        # If we start in game mode, learn the current foreground window.
+        time.sleep(1.5)
+        if loop.mode_manager.is_game_mode() and not _game_hwnd:
+            _game_hwnd = _get_foreground_hwnd()
+            if _game_hwnd:
+                logger.info("Game window captured at startup (hwnd=%d).", _game_hwnd)
+
+        while True:
+            time.sleep(0.5)
+            if not _game_hwnd:
+                continue
+
+            if loop.mode_manager.is_game_mode():
+                # User minimized the game (Alt+Tab, Win key, etc.) → go desktop
+                if _is_iconic(_game_hwnd):
+                    logger.info("Game minimized externally — switching to DESKTOP.")
+                    loop.mode_manager._switch()
+
+            elif loop.mode_manager.is_desktop_mode():
+                # User clicked the game in the taskbar / restored it → go game
+                fg = _get_foreground_hwnd()
+                if fg == _game_hwnd and not _is_iconic(_game_hwnd):
+                    logger.info("Game restored externally — switching to GAME.")
+                    loop.mode_manager._switch()
+
+    threading.Thread(target=_window_watcher, daemon=True,
+                     name="window-watcher").start()
 
     # ------------------------------------------------------------------
     # Profile auto-detection — poll every tick-ish via a side thread
