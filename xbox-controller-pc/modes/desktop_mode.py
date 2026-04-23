@@ -73,10 +73,10 @@ class DesktopMode:
         profile = self._profile_fn()
         lb_held = state.buttons.get(BUTTON_LB, False)
 
-        self._update_mouse(state.axes.get(AXIS_RX, 0.0),
-                           state.axes.get(AXIS_RY, 0.0), profile)
-        self._update_scroll(state.axes.get(AXIS_LX, 0.0),
-                            state.axes.get(AXIS_LY, 0.0), profile)
+        self._update_mouse(state.axes.get(AXIS_LX, 0.0),
+                           state.axes.get(AXIS_LY, 0.0), profile)
+        self._update_scroll(state.axes.get(AXIS_RX, 0.0),
+                            state.axes.get(AXIS_RY, 0.0), profile)
         self._update_buttons(state.buttons, lb_held, profile)
         self._update_dpad(state.hat, profile)
         self._update_triggers(state.axes, profile)

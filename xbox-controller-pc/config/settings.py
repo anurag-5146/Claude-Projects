@@ -52,7 +52,7 @@ TRIGGER_DEADZONE: float = 0.05  # Trigger dead-zone
 # ---------------------------------------------------------------------------
 # Desktop-mode mouse / scroll settings
 # ---------------------------------------------------------------------------
-MOUSE_SENSITIVITY: float = 18.0     # px per tick at full stick deflection
+MOUSE_SENSITIVITY: float = 35.0     # px per tick at full stick deflection
 MOUSE_ACCEL_EXPONENT: float = 1.6   # >1 = slow small, fast large movements
 # Scroll events per second at full left-stick deflection (non-linear via exponent)
 SCROLL_SENSITIVITY: float = 12.0
