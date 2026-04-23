@@ -188,6 +188,24 @@ class VirtualPad:
             return (raw + 1.0) / 2.0
         return raw
 
+    def release_all(self) -> None:
+        """Zero every button and axis on the virtual pad (call when leaving game mode)."""
+        if self._pad is None:
+            return
+        pad = self._pad
+        try:
+            for xusb_btn in _BUTTON_MAP.values():
+                pad.release_button(xusb_btn)
+            for dpad_btn in _HAT_TO_DPAD.values():
+                pad.release_button(dpad_btn)
+            pad.left_joystick_float(0.0, 0.0)
+            pad.right_joystick_float(0.0, 0.0)
+            pad.left_trigger_float(0.0)
+            pad.right_trigger_float(0.0)
+            pad.update()
+        except Exception:
+            logger.exception("release_all failed")
+
     def shutdown(self) -> None:
         if self._rumble_timer:
             self._rumble_timer.cancel()
