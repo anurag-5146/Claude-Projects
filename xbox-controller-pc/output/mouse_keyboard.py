@@ -83,7 +83,7 @@ class MouseKeyboardOutput:
 
     def alt_tab(self)        -> None: self.combo(Key.alt, Key.tab)
     def alt_f4(self)         -> None: self.combo(Key.alt, Key.f4)
-    def win_d(self)          -> None: self.combo(Key.cmd, Key.cmd_r if False else 'd')
+    def win_d(self)          -> None: self.combo(Key.cmd, 'd')
     def win_tab(self)        -> None: self.combo(Key.cmd, Key.tab)
     def print_screen(self)   -> None: self.tap(Key.print_screen)
     def browser_back(self)   -> None: self.combo(Key.alt, Key.left)

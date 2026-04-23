@@ -10,10 +10,11 @@ Threading model
 Run:
     python main.py
 """
+import ctypes
 import logging
 import threading
 
-from config.settings import RUMBLE_DURATION, RUMBLE_LEFT_MOTOR, RUMBLE_ON_SWITCH, RUMBLE_RIGHT_MOTOR
+from config.settings import Mode, RUMBLE_DURATION, RUMBLE_LEFT_MOTOR, RUMBLE_ON_SWITCH, RUMBLE_RIGHT_MOTOR
 from core.main_loop import MainLoop
 from modes.desktop_mode import DesktopMode
 from modes.game_mode import GameMode
@@ -29,6 +30,35 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Window minimize / restore helpers (Windows only, degrade gracefully)
+# ---------------------------------------------------------------------------
+try:
+    _user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+    _SW_MINIMIZE = 6
+    _SW_RESTORE  = 9
+
+    def _get_foreground_hwnd() -> int:
+        return _user32.GetForegroundWindow()
+
+    def _minimize_hwnd(hwnd: int) -> None:
+        if hwnd:
+            _user32.ShowWindow(hwnd, _SW_MINIMIZE)
+
+    def _restore_hwnd(hwnd: int) -> None:
+        if hwnd:
+            _user32.ShowWindow(hwnd, _SW_RESTORE)
+            try:
+                _user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+
+except (OSError, AttributeError):
+    def _get_foreground_hwnd() -> int: return 0          # type: ignore[misc]
+    def _minimize_hwnd(hwnd: int) -> None: pass          # type: ignore[misc]
+    def _restore_hwnd(hwnd: int) -> None: pass           # type: ignore[misc]
 
 
 def main() -> None:
@@ -49,9 +79,28 @@ def main() -> None:
     loop.set_desktop_handler(desktop.handle)
 
     # ------------------------------------------------------------------
-    # Mode-switch side-effects: rumble + OSD + tray
+    # Mode-switch side-effects: rumble + OSD + tray + window management
     # ------------------------------------------------------------------
+    _game_hwnd: int = 0
+
     def on_mode_switch(new_mode: str) -> None:
+        nonlocal _game_hwnd
+
+        if new_mode == Mode.DESKTOP:
+            # Release all virtual-pad inputs so the game doesn't see stuck buttons.
+            virtual_pad.release_all()
+            # Save and minimize the game window.
+            _game_hwnd = _get_foreground_hwnd()
+            if _game_hwnd:
+                logger.info("Minimising game window (hwnd=%d).", _game_hwnd)
+                _minimize_hwnd(_game_hwnd)
+
+        elif new_mode == Mode.GAME:
+            # Restore the game window so the player is back in-game immediately.
+            if _game_hwnd:
+                logger.info("Restoring game window (hwnd=%d).", _game_hwnd)
+                _restore_hwnd(_game_hwnd)
+
         if RUMBLE_ON_SWITCH:
             virtual_pad.rumble(RUMBLE_LEFT_MOTOR, RUMBLE_RIGHT_MOTOR, RUMBLE_DURATION)
         osd.show(new_mode)

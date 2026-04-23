@@ -95,11 +95,26 @@ class VirtualPad:
         self._rumble_timer: Optional[threading.Timer] = None
 
         if _VG_AVAILABLE:
-            try:
-                self._pad = vg.VX360Gamepad()
-                logger.info("Virtual Xbox 360 pad created.")
-            except Exception as exc:
-                logger.error("Could not create virtual pad: %s", exc)
+            # Delay ViGEmBus device creation so pygame's joystick subsystem
+            # initialises first and the reader locks onto the physical controller.
+            # Without this, SDL2 sees both devices simultaneously and may
+            # connect to the virtual pad instead of the physical one.
+            t = threading.Timer(2.0, self._create_pad)
+            t.daemon = True
+            t.start()
+        else:
+            logger.warning("vgamepad not installed — game-mode output disabled.")
+
+    # ------------------------------------------------------------------
+    # Deferred ViGEmBus creation
+    # ------------------------------------------------------------------
+
+    def _create_pad(self) -> None:
+        try:
+            self._pad = vg.VX360Gamepad()
+            logger.info("Virtual Xbox 360 pad created (deferred).")
+        except Exception as exc:
+            logger.error("Could not create virtual pad: %s", exc)
 
     # ------------------------------------------------------------------
     # Passthrough
@@ -172,6 +187,24 @@ class VirtualPad:
         if raw < 0:
             return (raw + 1.0) / 2.0
         return raw
+
+    def release_all(self) -> None:
+        """Zero every button and axis on the virtual pad (call when leaving game mode)."""
+        if self._pad is None:
+            return
+        pad = self._pad
+        try:
+            for xusb_btn in _BUTTON_MAP.values():
+                pad.release_button(xusb_btn)
+            for dpad_btn in _HAT_TO_DPAD.values():
+                pad.release_button(dpad_btn)
+            pad.left_joystick_float(0.0, 0.0)
+            pad.right_joystick_float(0.0, 0.0)
+            pad.left_trigger_float(0.0)
+            pad.right_trigger_float(0.0)
+            pad.update()
+        except Exception:
+            logger.exception("release_all failed")
 
     def shutdown(self) -> None:
         if self._rumble_timer:
