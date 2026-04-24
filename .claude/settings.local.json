@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash ~/.claude/scripts/stop-checkpoint.sh)",
+      "Bash(python -c \"import json; json.load\\(open\\('/c/Users/drona/.claude/settings.json'\\)\\)\")"
+    ]
+  }
+}
