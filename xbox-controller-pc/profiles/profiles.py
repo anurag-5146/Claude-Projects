@@ -19,7 +19,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -158,3 +158,68 @@ class ProfileManager:
                 if pattern.lower() in title.lower():
                     return profile
         return self._default
+
+    # ------------------------------------------------------------------
+    # Save / edit
+    # ------------------------------------------------------------------
+
+    def all_profiles(self) -> List[dict]:
+        """Default first, then the rest — the full active set."""
+        return ([self._default] if self._default else []) + list(self._profiles)
+
+    def save(self, profile: dict) -> Path:
+        """Write `profile` back to its JSON file (by `name`), preserving
+        friendly key names (button_actions keyed by "A"/"B"/etc).
+
+        Returns the path written.
+        """
+        name = profile.get("name", "").strip()
+        if not name:
+            raise ValueError("Profile has no 'name' — cannot save.")
+        path = _PROFILES_DIR / f"{name}.json"
+        data = _denormalize(profile)
+        path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        logger.info("Saved profile: %s", path.name)
+        return path
+
+    def reload(self) -> None:
+        """Re-read all profiles from disk. Updates the active pointer to
+        whichever profile currently matches the foreground window."""
+        active_name = self._active.get("name", "")
+        self.load_all()
+        self._last_title = ""   # force re-match on next update()
+        for p in self.all_profiles():
+            if p.get("name") == active_name:
+                self._active = p
+                break
+
+
+# ---------------------------------------------------------------------------
+# De-normalizer — inverse of _normalize(): int keys -> human names
+# ---------------------------------------------------------------------------
+_IDX_TO_BTN_NAME: Dict[int, str] = {v: k for k, v in _BTN_NAME_TO_IDX.items()}
+_HAT_TO_DPAD_NAME: Dict[Tuple[int, int], str] = {v: k for k, v in _DPAD_NAME_TO_HAT.items()}
+
+
+def _denormalize(data: dict) -> dict:
+    """Convert internal int/tuple keys back to the JSON-friendly forms."""
+    out: Dict[str, Any] = {}
+    for k, v in data.items():
+        if k in ("button_actions", "lb_shortcuts"):
+            out[k] = {
+                _IDX_TO_BTN_NAME.get(int(bk), str(bk)) if isinstance(bk, int) else str(bk): bv
+                for bk, bv in v.items()
+            }
+        elif k == "dpad_actions":
+            out[k] = {}
+            for hk, hv in v.items():
+                if isinstance(hk, (tuple, list)) and len(hk) == 2:
+                    out[k][_HAT_TO_DPAD_NAME.get(tuple(hk), str(hk))] = hv
+                else:
+                    out[k][str(hk)] = hv
+        else:
+            out[k] = v
+    return out

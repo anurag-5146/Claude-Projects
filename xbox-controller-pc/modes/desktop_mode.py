@@ -34,7 +34,7 @@ from config.settings import (
     SCROLL_SENSITIVITY, TICK_RATE, TRIGGER_THRESHOLD,
 )
 from controller.reader import ControllerState
-from output import media
+from output import actions as action_dispatch
 from output.mouse_keyboard import MouseKeyboardOutput
 
 logger = logging.getLogger(__name__)
@@ -185,35 +185,9 @@ class DesktopMode:
     # Action dispatcher
     # ------------------------------------------------------------------
 
-    def _do_action(self, action: str) -> None:
-        mk = self._mk
-        dispatch = {
-            "left_click":      mk.left_click,
-            "right_click":     mk.right_click,
-            "middle_click":    mk.middle_click,
-            "enter":           mk.enter,
-            "escape":          mk.escape,
-            "alt_tab":         mk.alt_tab,
-            "alt_f4":          mk.alt_f4,
-            "win_d":           mk.win_d,
-            "win_tab":         mk.win_tab,
-            "print_screen":    mk.print_screen,
-            "browser_back":    mk.browser_back,
-            "browser_forward": mk.browser_forward,
-            "play_pause":      media.play_pause,
-            "volume_up":       media.volume_up,
-            "volume_down":     media.volume_down,
-            "next_track":      media.next_track,
-            "prev_track":      media.prev_track,
-        }
-        fn = dispatch.get(action)
-        if fn:
-            try:
-                fn()
-            except Exception:
-                logger.exception("Action %r raised", action)
-        else:
-            logger.warning("Unknown action: %r", action)
+    def _do_action(self, action) -> None:
+        """Execute a bound action — string (named) or dict (structured)."""
+        action_dispatch.perform(self._mk, action)
 
     # ------------------------------------------------------------------
     # Helpers

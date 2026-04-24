@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash ~/.claude/scripts/stop-checkpoint.sh)",
+      "Bash(python -c \"import json; json.load\\(open\\('/c/Users/drona/.claude/settings.json'\\)\\)\")",
+      "Bash(python -c \"import json; json.load\\(open\\(r'C:\\\\Users\\\\drona\\\\.claude\\\\settings.json'\\)\\); print\\('JSON OK'\\)\")",
+      "Bash(python -m py_compile main.py core/main_loop.py tray/tray_app.py ui/osd_overlay.py ui/state_bridge.py ui/dashboard/__init__.py ui/dashboard/theme.py ui/dashboard/widgets.py ui/dashboard/window.py ui/dashboard/tab_live.py ui/dashboard/tab_buttons.py ui/dashboard/tab_settings.py ui/dashboard/tab_profiles.py)",
+      "Read(//c/Users/drona/Documents/Claude-Projects/xbox-controller-pc/**)",
+      "Bash(python -m py_compile main.py core/main_loop.py tray/tray_app.py ui/osd_overlay.py ui/state_bridge.py ui/dashboard/*.py)",
+      "Bash(python -m py_compile output/actions.py modes/desktop_mode.py profiles/profiles.py main.py ui/state_bridge.py)"
+    ]
+  }
+}
