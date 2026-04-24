@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 Handler = Callable[[ControllerState], None]
 SwitchListener = Callable[[str], None]
+StateObserver = Callable[[ControllerState, float], None]
 
 
 class MainLoop:
@@ -33,9 +34,12 @@ class MainLoop:
         self._game_handler: Optional[Handler] = None
         self._desktop_handler: Optional[Handler] = None
         self._switch_listeners: List[SwitchListener] = []
+        self._state_observers: List[StateObserver] = []
 
         self._last_reconnect_attempt: float = 0.0
         self._tick_duration: float = 1.0 / TICK_RATE
+        self._last_tick_time: float = 0.0
+        self._tick_hz_ema: float = 0.0
 
     # ------------------------------------------------------------------
     # Handler / listener registration
@@ -50,6 +54,13 @@ class MainLoop:
     def add_switch_listener(self, listener: SwitchListener) -> None:
         """Register a callback invoked (new_mode: str) on every mode switch."""
         self._switch_listeners.append(listener)
+
+    def add_state_observer(self, observer: StateObserver) -> None:
+        """Register a per-tick observer: (state, tick_hz) -> None.
+
+        Must be fast and non-blocking — runs on the loop thread.
+        """
+        self._state_observers.append(observer)
 
     @property
     def mode_manager(self) -> ModeManager:
@@ -91,14 +102,28 @@ class MainLoop:
     def _tick(self) -> None:
         state = self._reader.poll()
 
+        # Instantaneous tick-rate (EMA) for UI consumers
+        now = time.monotonic()
+        if self._last_tick_time > 0.0:
+            dt = now - self._last_tick_time
+            if dt > 0:
+                inst = 1.0 / dt
+                self._tick_hz_ema = (0.9 * self._tick_hz_ema + 0.1 * inst) \
+                    if self._tick_hz_ema else inst
+        self._last_tick_time = now
+
+        for obs in self._state_observers:
+            try:
+                obs(state, self._tick_hz_ema)
+            except Exception:
+                logger.exception("state observer raised")
+
         if not state.connected:
             self._maybe_reconnect()
             return
 
         switched = self._mode_manager.update(state.buttons)
         if switched:
-            # Give mode handlers a chance to reset their internal state
-            # when a switch happens (they can check mode_manager.current_mode).
             pass
 
         self._dispatch(state)

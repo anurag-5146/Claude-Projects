@@ -14,7 +14,7 @@ thread-safe because it only puts items in a Queue.
 import logging
 import queue
 import tkinter as tk
-from typing import Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ _POLL_MS      = 80
 class OSDOverlay:
     def __init__(self) -> None:
         self._q: queue.Queue[str] = queue.Queue()
+        self._callbacks: "queue.Queue[Callable[[], None]]" = queue.Queue()
         self._root: Optional[tk.Tk] = None
         self._label: Optional[tk.Label] = None
         self._after_id: Optional[str] = None
@@ -78,11 +79,34 @@ class OSDOverlay:
         """Ask the OSD to tear itself down (from any thread)."""
         self._q.put("__quit__")
 
+    def run_on_main(self, fn: Callable[[], None]) -> None:
+        """Schedule a callable to run on the tkinter main thread.
+
+        Required for anything that creates Toplevels (e.g. the dashboard),
+        since tkinter is not thread-safe on Windows.
+        """
+        self._callbacks.put(fn)
+
+    def root(self) -> Optional[tk.Tk]:
+        """Return the underlying Tk root (None until run() has started)."""
+        return self._root
+
     # ------------------------------------------------------------------
     # Internal: tkinter-thread only below this line
     # ------------------------------------------------------------------
 
     def _poll(self) -> None:
+        # Drain any main-thread callbacks first (dashboard open, etc.)
+        while True:
+            try:
+                cb = self._callbacks.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                cb()
+            except Exception:
+                logger.exception("run_on_main callback failed")
+
         try:
             text = self._q.get_nowait()
         except queue.Empty:

@@ -22,7 +22,9 @@ from output.mouse_keyboard import MouseKeyboardOutput
 from output.virtual_pad import VirtualPad
 from profiles.profiles import ProfileManager
 from tray.tray_app import TrayApp
+from ui.dashboard import open_dashboard
 from ui.osd_overlay import OSDOverlay
+from ui.state_bridge import StateBridge
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,6 +72,7 @@ def main() -> None:
     profiles     = ProfileManager()
     loop         = MainLoop()
     osd          = OSDOverlay()
+    bridge       = StateBridge()
 
     # Desktop mode receives the active profile dict each tick
     desktop = DesktopMode(mouse_kb, profile_fn=profiles.current)
@@ -108,6 +111,15 @@ def main() -> None:
 
     loop.add_switch_listener(on_mode_switch)
 
+    # Feed the dashboard bridge
+    loop.add_state_observer(bridge.push_state)
+    loop.add_switch_listener(bridge.push_mode)
+    bridge.set_switch_mode(lambda: loop.mode_manager._switch())
+    bridge.set_profiles_provider(
+        list_fn=lambda: [profiles._default] + profiles._profiles if profiles._default else profiles._profiles,
+        set_fn=lambda _name: None,   # auto-detection handles this; manual override TBD
+    )
+
     # ------------------------------------------------------------------
     # Tray icon
     # ------------------------------------------------------------------
@@ -115,10 +127,19 @@ def main() -> None:
         """Called from tray menu — toggles mode programmatically."""
         loop.mode_manager._switch()          # direct call into ModeManager
 
+    def _open_dashboard_from_tray() -> None:
+        # Tray callbacks run on the tray thread; hop to the tkinter thread.
+        root = osd.root()
+        if root is None:
+            logger.warning("OSD not ready yet — dashboard open ignored.")
+            return
+        osd.run_on_main(lambda: open_dashboard(root, bridge))
+
     tray = TrayApp(
-        get_mode_fn    = lambda: loop.mode_manager.current_mode,
-        switch_mode_fn = _force_switch,
-        quit_fn        = lambda: (loop.stop(), osd.destroy()),
+        get_mode_fn       = lambda: loop.mode_manager.current_mode,
+        switch_mode_fn    = _force_switch,
+        quit_fn           = lambda: (loop.stop(), osd.destroy()),
+        open_dashboard_fn = _open_dashboard_from_tray,
     )
     tray.start()
 
@@ -127,8 +148,13 @@ def main() -> None:
     # ------------------------------------------------------------------
     def _profile_watcher() -> None:
         import time
+        last_name = ""
         while True:
             profiles.update()
+            current_name = profiles.current().get("name", "default")
+            if current_name != last_name:
+                bridge.push_profile(current_name)
+                last_name = current_name
             time.sleep(1.0)
 
     threading.Thread(target=_profile_watcher, daemon=True,

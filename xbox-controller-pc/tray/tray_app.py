@@ -44,16 +44,19 @@ class TrayApp:
         get_mode_fn: Callable[[], str],
         switch_mode_fn: Callable[[], None],
         quit_fn: Callable[[], None],
+        open_dashboard_fn: Optional[Callable[[], None]] = None,
     ) -> None:
         """
         Args:
             get_mode_fn:    returns current mode string ("game"/"desktop").
             switch_mode_fn: called when user clicks "Switch Mode".
             quit_fn:        called when user clicks "Quit".
+            open_dashboard_fn: called when user clicks "Open Dashboard" (optional).
         """
         self._get_mode = get_mode_fn
         self._switch_mode = switch_mode_fn
         self._quit_fn = quit_fn
+        self._open_dashboard_fn = open_dashboard_fn
         self._icon: Optional[object] = None
 
     def start(self) -> None:
@@ -101,10 +104,20 @@ class TrayApp:
                 enabled=False,
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Switch Mode",  self._on_switch),
+            pystray.MenuItem("Switch Mode",     self._on_switch),
+            pystray.MenuItem("Open Dashboard",  self._on_open_dashboard,
+                             visible=lambda item: self._open_dashboard_fn is not None),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Quit",         self._on_quit),
+            pystray.MenuItem("Quit",            self._on_quit),
         )
+
+    def _on_open_dashboard(self, icon, item) -> None:  # noqa: ANN001
+        if self._open_dashboard_fn is None:
+            return
+        try:
+            self._open_dashboard_fn()
+        except Exception:
+            logger.exception("Open dashboard from tray failed")
 
     def _on_switch(self, icon, item) -> None:  # noqa: ANN001
         try:
