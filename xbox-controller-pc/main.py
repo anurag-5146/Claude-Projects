@@ -116,9 +116,10 @@ def main() -> None:
     loop.add_switch_listener(bridge.push_mode)
     bridge.set_switch_mode(lambda: loop.mode_manager._switch())
     bridge.set_profiles_provider(
-        list_fn=lambda: [profiles._default] + profiles._profiles if profiles._default else profiles._profiles,
-        set_fn=lambda _name: None,   # auto-detection handles this; manual override TBD
+        list_fn=profiles.all_profiles,
+        set_fn=lambda _name: None,   # auto-detection handles this
     )
+    bridge.set_profile_writer(profiles.save, profiles.reload)
 
     # ------------------------------------------------------------------
     # Tray icon

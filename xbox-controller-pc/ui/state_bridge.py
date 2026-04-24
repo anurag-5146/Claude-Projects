@@ -30,6 +30,8 @@ class StateBridge:
         self._switch_mode_cb: Optional[Callable[[], None]] = None
         self._profiles_cb: Optional[Callable[[], List[dict]]] = None
         self._set_profile_cb: Optional[Callable[[str], None]] = None
+        self._save_profile_cb: Optional[Callable[[dict], None]] = None
+        self._reload_profiles_cb: Optional[Callable[[], None]] = None
 
     # ---- writer side (called from main loop / profile watcher) ----
     def push_state(self, state: ControllerState, tick_hz: float) -> None:
@@ -91,3 +93,22 @@ class StateBridge:
     def activate_profile(self, name: str) -> None:
         if self._set_profile_cb:
             self._set_profile_cb(name)
+
+    def set_profile_writer(
+        self,
+        save_fn: Callable[[dict], None],
+        reload_fn: Callable[[], None],
+    ) -> None:
+        self._save_profile_cb = save_fn
+        self._reload_profiles_cb = reload_fn
+
+    def save_profile(self, profile: dict) -> bool:
+        if not self._save_profile_cb:
+            return False
+        try:
+            self._save_profile_cb(profile)
+            if self._reload_profiles_cb:
+                self._reload_profiles_cb()
+            return True
+        except Exception:
+            return False
