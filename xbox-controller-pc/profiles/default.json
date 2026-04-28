@@ -28,5 +28,10 @@
     "right": "next_track"
   },
   "lt_action": "browser_back",
-  "rt_action": "browser_forward"
+  "rt_action": "browser_forward",
+  "chord_actions": {
+    "LB+RB+X": { "type": "launch", "target": "youtube" },
+    "LB+RB+Y": { "type": "launch", "target": "netflix" },
+    "LB+RB+A": { "type": "launch", "target": "spotify" }
+  }
 }

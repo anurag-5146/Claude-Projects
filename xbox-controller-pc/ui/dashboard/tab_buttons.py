@@ -13,6 +13,7 @@ from config.settings import (
     BUTTON_ACTIONS, LB_SHORTCUTS, DPAD_ACTIONS, LT_ACTION, RT_ACTION,
 )
 from ui.dashboard.binding_editor import BindingEditor
+from ui.dashboard.chord_editor import ChordPicker
 from ui.state_bridge import StateBridge
 
 _BTN_IDX_TO_NAME = {
@@ -21,6 +22,16 @@ _BTN_IDX_TO_NAME = {
     8: "LSTICK", 9: "RSTICK", 10: "GUIDE",
 }
 _HAT_TO_NAME = {(0, 1): "Up", (0, -1): "Down", (-1, 0): "Left", (1, 0): "Right"}
+# Canonical chord-name ordering (matches profiles._BTN_SORT_ORDER)
+_CHORD_SORT = ["LB", "RB", "LT", "RT", "A", "B", "X", "Y",
+               "BACK", "START", "GUIDE", "LSTICK", "RSTICK"]
+_CHORD_SORT_IDX = {n: i for i, n in enumerate(_CHORD_SORT)}
+
+
+def _chord_label(chord) -> str:
+    names = [_BTN_IDX_TO_NAME.get(int(i), str(i)) for i in chord]
+    names.sort(key=lambda n: _CHORD_SORT_IDX.get(n, 999))
+    return " + ".join(names)
 
 
 class ButtonsTab(ttk.Frame):
@@ -41,6 +52,10 @@ class ButtonsTab(ttk.Frame):
                    command=self._edit_selected).pack(side="right")
         ttk.Button(bar, text="Refresh", style="Dash.TButton",
                    command=self._refresh).pack(side="right", padx=6)
+        ttk.Button(bar, text="Delete chord", style="Dash.TButton",
+                   command=self._delete_chord).pack(side="right", padx=6)
+        ttk.Button(bar, text="Add chord…", style="Dash.TButton",
+                   command=self._add_chord).pack(side="right", padx=6)
 
         self._tree = ttk.Treeview(self,
             columns=("action",), show="tree headings",
@@ -112,6 +127,16 @@ class ButtonsTab(ttk.Frame):
             values=(_format_action(rt),))
         self._row_keys[iid] = ("trigger", "rt")
 
+        chords = profile.get("chord_actions", {}) or {}
+        g_chords = self._tree.insert("", "end",
+            text=f"Chord shortcuts ({len(chords)})", open=True)
+        for chord, action in chords.items():
+            label = _chord_label(chord) if isinstance(chord, frozenset) else str(chord)
+            iid = self._tree.insert(g_chords, "end",
+                text=f"  {label}",
+                values=(_format_action(action),))
+            self._row_keys[iid] = ("chord_actions", chord)
+
     # ---- edit ----
     def _edit_selected(self) -> None:
         sel = self._tree.selection()
@@ -146,6 +171,8 @@ class ButtonsTab(ttk.Frame):
         if section == "trigger":
             return profile.get(f"{key}_action",
                 LT_ACTION if key == "lt" else RT_ACTION)
+        if section == "chord_actions":
+            return profile.get(section, {}).get(key, "noop")
         defaults = {
             "button_actions": BUTTON_ACTIONS,
             "lb_shortcuts":   LB_SHORTCUTS,
@@ -159,6 +186,49 @@ class ButtonsTab(ttk.Frame):
             profile[f"{key}_action"] = action
             return
         profile.setdefault(section, {})[key] = action
+
+    # ---- chord add / delete ----
+    def _add_chord(self) -> None:
+        profile = self._current_profile()
+        if not profile:
+            return
+
+        def on_chord(chord: frozenset) -> None:
+            existing = profile.get("chord_actions", {}) or {}
+            if chord in existing:
+                messagebox.showinfo("Chord exists",
+                    f"{_chord_label(chord)} is already bound — edit it instead.",
+                    parent=self)
+                return
+
+            def on_action(action) -> None:
+                profile.setdefault("chord_actions", {})[chord] = action
+                if self._bridge.save_profile(profile):
+                    self._refresh()
+
+            BindingEditor(self, _chord_label(chord), "noop", on_action)
+
+        ChordPicker(self, self._bridge, initial=None, on_save=on_chord)
+
+    def _delete_chord(self) -> None:
+        sel = self._tree.selection()
+        if not sel:
+            return
+        meta = self._row_keys.get(sel[0])
+        if meta is None or meta[0] != "chord_actions":
+            messagebox.showinfo("Pick a chord",
+                "Select a row under 'Chord shortcuts' first.", parent=self)
+            return
+        _, chord = meta
+        profile = self._current_profile()
+        if not profile:
+            return
+        chords = profile.get("chord_actions", {}) or {}
+        if chord in chords:
+            del chords[chord]
+            profile["chord_actions"] = chords
+            if self._bridge.save_profile(profile):
+                self._refresh()
 
 
 def _format_action(a) -> str:
