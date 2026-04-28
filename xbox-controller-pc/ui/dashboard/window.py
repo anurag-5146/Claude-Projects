@@ -24,6 +24,8 @@ class Dashboard:
     def __init__(self, root: tk.Misc, bridge: StateBridge) -> None:
         self._bridge = bridge
         self._win = tk.Toplevel(root)
+        from ui.app_icon import apply_icon
+        apply_icon(self._win)
         self._win.title("Xbox Controller — Dashboard")
         self._win.geometry("680x540")
         self._win.minsize(620, 480)

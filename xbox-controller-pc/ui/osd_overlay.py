@@ -55,6 +55,8 @@ class OSDOverlay:
         Blocks until the window is destroyed.
         """
         self._root = tk.Tk()
+        from ui.app_icon import apply_icon
+        apply_icon(self._root)
         self._root.overrideredirect(True)
         self._root.attributes("-topmost", True)
         self._root.attributes("-alpha", 0.0)   # start invisible

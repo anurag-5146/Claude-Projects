@@ -24,7 +24,16 @@ from ui.state_bridge import Snapshot, StateBridge
 
 logger = logging.getLogger(__name__)
 
-_ASSETS = Path(__file__).resolve().parent.parent.parent / "assets"
+def _assets_dir() -> Path:
+    """Resolve assets/ in both dev and PyInstaller-bundled runs."""
+    import sys
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass) / "assets"
+    return Path(__file__).resolve().parent.parent.parent / "assets"
+
+
+_ASSETS = _assets_dir()
 _IMG_PATH = _ASSETS / "controller.png"
 _LAYOUT_PATH = _ASSETS / "controller_layout.json"
 

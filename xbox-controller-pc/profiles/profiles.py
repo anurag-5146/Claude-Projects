@@ -41,6 +41,20 @@ _DPAD_NAME_TO_HAT: Dict[str, Tuple[int, int]] = {
 }
 
 
+def _parse_chord_key(key: str) -> "frozenset[int] | None":
+    """'LB+RB+X' → frozenset({4, 5, 2}). Returns None on any unknown token."""
+    parts = [p.strip().upper() for p in str(key).split("+") if p.strip()]
+    if not parts:
+        return None
+    idxs = []
+    for p in parts:
+        idx = _BTN_NAME_TO_IDX.get(p)
+        if idx is None:
+            return None
+        idxs.append(idx)
+    return frozenset(idxs)
+
+
 def _normalize(data: dict) -> dict:
     """Convert friendly JSON keys to the int/tuple keys DesktopMode expects."""
     data = dict(data)
@@ -55,6 +69,13 @@ def _normalize(data: dict) -> dict:
             _DPAD_NAME_TO_HAT.get(str(k).lower(), k): v
             for k, v in data["dpad_actions"].items()
         }
+    if "chord_actions" in data:
+        norm: Dict[Any, Any] = {}
+        for k, v in data["chord_actions"].items():
+            chord = _parse_chord_key(k)
+            if chord is not None and len(chord) >= 2:
+                norm[chord] = v
+        data["chord_actions"] = norm
     return data
 
 # ---------------------------------------------------------------------------
@@ -204,6 +225,18 @@ _IDX_TO_BTN_NAME: Dict[int, str] = {v: k for k, v in _BTN_NAME_TO_IDX.items()}
 _HAT_TO_DPAD_NAME: Dict[Tuple[int, int], str] = {v: k for k, v in _DPAD_NAME_TO_HAT.items()}
 
 
+# Canonical ordering for chord keys (A before B before X before ... before GUIDE)
+_BTN_SORT_ORDER = ["LB", "RB", "LT", "RT", "A", "B", "X", "Y",
+                   "BACK", "START", "GUIDE", "LSTICK", "RSTICK"]
+_BTN_SORT_IDX = {name: i for i, name in enumerate(_BTN_SORT_ORDER)}
+
+
+def _chord_to_name(chord) -> str:
+    names = [_IDX_TO_BTN_NAME.get(int(i), str(i)) for i in chord]
+    names.sort(key=lambda n: _BTN_SORT_IDX.get(n, 999))
+    return "+".join(names)
+
+
 def _denormalize(data: dict) -> dict:
     """Convert internal int/tuple keys back to the JSON-friendly forms."""
     out: Dict[str, Any] = {}
@@ -220,6 +253,13 @@ def _denormalize(data: dict) -> dict:
                     out[k][_HAT_TO_DPAD_NAME.get(tuple(hk), str(hk))] = hv
                 else:
                     out[k][str(hk)] = hv
+        elif k == "chord_actions":
+            out[k] = {}
+            for ck, cv in v.items():
+                if isinstance(ck, (frozenset, set, tuple, list)):
+                    out[k][_chord_to_name(ck)] = cv
+                else:
+                    out[k][str(ck)] = cv
         else:
             out[k] = v
     return out

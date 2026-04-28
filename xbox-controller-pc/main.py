@@ -12,7 +12,10 @@ Run:
 """
 import ctypes
 import logging
+import os
+import sys
 import threading
+from pathlib import Path
 
 from config.settings import Mode, RUMBLE_DURATION, RUMBLE_LEFT_MOTOR, RUMBLE_ON_SWITCH, RUMBLE_RIGHT_MOTOR
 from core.main_loop import MainLoop
@@ -22,15 +25,39 @@ from output.mouse_keyboard import MouseKeyboardOutput
 from output.virtual_pad import VirtualPad
 from profiles.profiles import ProfileManager
 from tray.tray_app import TrayApp
+from ui.app_icon import set_app_user_model_id
 from ui.dashboard import open_dashboard
 from ui.osd_overlay import OSDOverlay
 from ui.state_bridge import StateBridge
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
+def _configure_logging() -> None:
+    """Log to a file when running as a windowed .exe (stderr is None),
+    otherwise keep the normal stderr stream handler for dev runs."""
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    datefmt = "%H:%M:%S"
+    handlers: list = []
+
+    if sys.stderr is not None:
+        handlers.append(logging.StreamHandler(sys.stderr))
+
+    # Always add a rotating file log — useful for a shared .exe where the
+    # user has no console to read from.
+    try:
+        log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".xbox-controller-pc"))
+        log_dir = log_dir / "xbox-controller-pc"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        from logging.handlers import RotatingFileHandler
+        handlers.append(RotatingFileHandler(
+            log_dir / "app.log", maxBytes=512_000, backupCount=2,
+            encoding="utf-8"))
+    except Exception:
+        pass
+
+    logging.basicConfig(level=logging.INFO, format=fmt, datefmt=datefmt,
+                        handlers=handlers or [logging.NullHandler()])
+
+
+_configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +91,10 @@ except (OSError, AttributeError):
 
 
 def main() -> None:
+    # Tell Windows this process has its own identity so the taskbar uses
+    # our icon (and doesn't group us under python.exe).
+    set_app_user_model_id()
+
     # ------------------------------------------------------------------
     # Instantiate subsystems
     # ------------------------------------------------------------------

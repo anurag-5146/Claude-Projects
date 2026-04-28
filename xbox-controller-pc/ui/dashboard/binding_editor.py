@@ -26,6 +26,8 @@ class BindingEditor(tk.Toplevel):
         on_save: Callable[[Action], None],
     ) -> None:
         super().__init__(master)
+        from ui.app_icon import apply_icon
+        apply_icon(self)
         self.title(f"Bind — {title}")
         self.geometry("460x360")
         self.resizable(False, False)

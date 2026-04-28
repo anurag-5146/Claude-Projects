@@ -29,10 +29,25 @@ _ICON_SIZE = 64
 
 
 def _make_icon(mode: str) -> "Image.Image":
+    """Load the bundled app icon and tint a small mode dot onto it."""
     color = _MODE_COLORS.get(mode, "#888888")
+    try:
+        from ui.app_icon import icon_path
+        p = icon_path()
+        if p is not None:
+            img = Image.open(p).convert("RGBA").resize(
+                (_ICON_SIZE, _ICON_SIZE), Image.LANCZOS)
+            draw = ImageDraw.Draw(img)
+            r = _ICON_SIZE // 6
+            draw.ellipse([_ICON_SIZE - 2 * r - 4, _ICON_SIZE - 2 * r - 4,
+                          _ICON_SIZE - 4, _ICON_SIZE - 4],
+                         fill=color, outline="white", width=2)
+            return img
+    except Exception:
+        logger.exception("failed to load bundled icon; falling back")
+
     img = Image.new("RGBA", (_ICON_SIZE, _ICON_SIZE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Filled circle with a white border
     draw.ellipse([4, 4, _ICON_SIZE - 4, _ICON_SIZE - 4],
                  fill=color, outline="white", width=3)
     return img

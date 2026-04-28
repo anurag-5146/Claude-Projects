@@ -60,6 +60,10 @@ class DesktopMode:
         self._prev_lt_active: bool = False
         self._prev_rt_active: bool = False
 
+        # Chord state: when a multi-button chord fires, we suppress normal
+        # single-button actions until every chord member is released.
+        self._chord_suppress: Optional[frozenset] = None
+
         self._mouse_rem_x: float = 0.0
         self._mouse_rem_y: float = 0.0
         self._scroll_rem: float = 0.0
@@ -77,7 +81,9 @@ class DesktopMode:
                            state.axes.get(AXIS_RY, 0.0), profile)
         self._update_scroll(state.axes.get(AXIS_LX, 0.0),
                             state.axes.get(AXIS_LY, 0.0), profile)
-        self._update_buttons(state.buttons, lb_held, profile)
+        chord_consumed = self._update_chords(state.buttons, profile)
+        if not chord_consumed:
+            self._update_buttons(state.buttons, lb_held, profile)
         self._update_dpad(state.hat, profile)
         self._update_triggers(state.axes, profile)
 
@@ -126,6 +132,39 @@ class DesktopMode:
             self._mk.h_scroll(ih)
         else:
             self._h_scroll_rem = 0.0
+
+    # ------------------------------------------------------------------
+    # Chords (user-defined multi-button shortcuts, e.g. LB+RB+X)
+    # ------------------------------------------------------------------
+
+    def _update_chords(self, buttons: Dict[int, bool], profile: dict) -> bool:
+        """Fire any chord whose members all became pressed this tick.
+
+        Returns True if a chord fired OR chord-suppression is still active
+        (caller should then skip single-button processing).
+        """
+        chord_map = profile.get("chord_actions", {}) or {}
+        pressed = frozenset(b for b, p in buttons.items() if p)
+
+        # Clear suppression once the user has released at least one member.
+        if self._chord_suppress is not None and not self._chord_suppress.issubset(pressed):
+            self._chord_suppress = None
+
+        if not chord_map:
+            return self._chord_suppress is not None
+
+        prev_pressed = frozenset(b for b, p in self._prev_buttons.items() if p)
+
+        # Prefer the most specific (largest) matching chord this tick.
+        for chord in sorted(chord_map.keys(), key=len, reverse=True):
+            if not isinstance(chord, frozenset):
+                continue
+            if chord.issubset(pressed) and not chord.issubset(prev_pressed):
+                self._do_action(chord_map[chord])
+                self._chord_suppress = chord
+                return True
+
+        return self._chord_suppress is not None
 
     # ------------------------------------------------------------------
     # Buttons (edge-detected: fire once on press, not on hold)
