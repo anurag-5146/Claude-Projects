@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gyro Wallpapers</string>
+    <string name="wallpaper_aurora">Aurora Borealis</string>
+    <string name="wallpaper_deepspace">Deep Space Nebula</string>
+    <string name="wallpaper_lava">Lava World</string>
+</resources>

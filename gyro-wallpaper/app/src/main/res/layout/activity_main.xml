@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="#0A0A14"
+    tools:context=".MainActivity">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Gyroscopic Live Wallpapers"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="#E0E8FF"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="OnePlus 13R · 4K OpenGL ES 3.0"
+        android:textSize="13sp"
+        android:textColor="#7080A0"
+        android:layout_marginBottom="48dp" />
+
+    <Button
+        android:id="@+id/btnAurora"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_marginBottom="16dp"
+        android:text="Aurora Borealis"
+        android:textSize="16sp"
+        android:backgroundTint="#1A3A2A"
+        android:textColor="#40FF90" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Northern lights shimmer across star-filled sky. Tilt to parallax star layers."
+        android:textSize="12sp"
+        android:textColor="#507060"
+        android:layout_marginBottom="28dp"
+        android:paddingHorizontal="4dp"/>
+
+    <Button
+        android:id="@+id/btnDeepspace"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_marginBottom="16dp"
+        android:text="Deep Space Nebula"
+        android:textSize="16sp"
+        android:backgroundTint="#12122E"
+        android:textColor="#8090FF" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Colorful nebula with star depth layers and shooting stars. Gyro shifts each layer separately."
+        android:textSize="12sp"
+        android:textColor="#404070"
+        android:layout_marginBottom="28dp"
+        android:paddingHorizontal="4dp"/>
+
+    <Button
+        android:id="@+id/btnLava"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_marginBottom="16dp"
+        android:text="Lava World"
+        android:textSize="16sp"
+        android:backgroundTint="#2E0800"
+        android:textColor="#FF6020" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Volcanic rock with glowing lava cracks. Tilting the phone shifts the gravity direction — lava pools and flows accordingly."
+        android:textSize="12sp"
+        android:textColor="#704030"
+        android:layout_marginBottom="40dp"
+        android:paddingHorizontal="4dp"/>
+
+    <Button
+        android:id="@+id/btnAllWallpapers"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Browse all live wallpapers"
+        android:textSize="13sp"
+        android:backgroundTint="#1A1A2A"
+        android:textColor="#5060A0" />
+
+</LinearLayout>
