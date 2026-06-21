@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-files-path name="nitro_photos" path="DCIM/NitroCamera/" />
+    <external-cache-path name="nitro_cache" path="." />
+</paths>

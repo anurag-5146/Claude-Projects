@@ -1,0 +1,3 @@
+-keep class com.nitro.camera.** { *; }
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
